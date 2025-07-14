@@ -1,0 +1,28 @@
+# Core Packages (pinned to compatible versions)
+fastapi==0.109.1
+uvicorn==0.27.0
+
+# Database
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+clickhouse-driver==0.2.6
+
+# Cache
+redis==5.0.1
+aioredis==2.0.1
+
+# Configuration
+python-dotenv==1.0.0
+
+# Pydantic Ecosystem (resolved conflict)
+pydantic==2.7.1  # Minimum version that satisfies:
+                 # - fastapi 0.109.1 (needs <3.0.0)
+                 # - pydantic-settings 2.10.1 (needs >=2.7.0)
+pydantic-settings==2.10.1
+
+# Async Support
+anyio==4.2.0
+
+# Optional Extras
+httpx==0.26.0
+python-multipart==0.0.6
