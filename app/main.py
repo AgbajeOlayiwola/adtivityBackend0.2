@@ -20,11 +20,10 @@ from .config import settings
 # Create all database tables based on the models.
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI()
+# This is an extra app instance from the original code,
+# which can be removed to avoid confusion. The app below is the main one.
+# app = FastAPI() 
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
 # Database Dependency
 def get_db():
     """
@@ -119,6 +118,11 @@ app = FastAPI(
     version="0.1.0",
 )
 
+@app.get("/")
+def read_root():
+    return {"Hello": "World"}
+
+
 # Initialize APIRouters to group related endpoints
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 dashboard_router = APIRouter(prefix="/dashboard", tags=["Dashboard Management"])
@@ -128,16 +132,12 @@ system_router = APIRouter(prefix="/system", tags=["System"])
 
 
 # --- CORS Middleware Configuration ---
-# origins = [
-#     "http://localhost:3008", "http://localhost:3004", "http://localhost:3001",
-#     "http://localhost:3002", "http://localhost:3003", "http://localhost:3005",
-#     "http://localhost:3006", "http://localhost:3007",
-# ]
-
+# --- FIX: Updated origins to allow any client to call the API.
+# This resolves CORS errors while keeping the API secure via API keys and JWTs.
 app.add_middleware(
     CORSMiddleware,
-    # allow_origins=origins,
-    # allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
