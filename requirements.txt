@@ -26,3 +26,4 @@ anyio==4.2.0
 # Optional Extras
 httpx==0.26.0
 python-multipart==0.0.6
+email-validator==2.0.0
