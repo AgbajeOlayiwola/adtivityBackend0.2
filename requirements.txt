@@ -1,29 +1,34 @@
-# Core Packages (pinned to compatible versions)
-fastapi==0.109.1
-uvicorn==0.27.0
-gunicorn==20.1.0
-# Database
+#Core Packages
+fastapi==0.116.1
+
+#Updated Uvicorn to the latest stable version.
+uvicorn==0.35.0
+gunicorn==23.0.0
+
+#Database
 sqlalchemy==2.0.25
 psycopg2-binary==2.9.9
 
-# Cache
-redis==5.0.1
+#Cache
+redis==6.4.0
 aioredis==2.0.1
 
-# Configuration
+#Configuration
 python-dotenv==1.0.0
 
-# Pydantic Ecosystem
+#Pydantic Ecosystem
 pydantic==2.7.1
 pydantic-settings==2.10.1
 
-# Async Support
+#Async Support
 anyio==4.2.0
 
-# Authentication
+#Authentication
+#Added python-jose to resolve the 'ModuleNotFoundError'.
+python-jose==3.3.0
 passlib==1.7.4
 
-# Optional Extras
-httpx==0.26.0
-python-multipart==0.0.6
+##Optional Extras
+httpx==0.28.1
+python-multipart==0.0.20
 email-validator==2.0.0
