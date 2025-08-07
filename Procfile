@@ -1,1 +1,1 @@
-web: gunicorn your_app.wsgi
+web: gunicorn vast-sands-19722.wsgi
