@@ -20,6 +20,11 @@ from .config import settings
 # Create all database tables based on the models.
 models.Base.metadata.create_all(bind=engine)
 
+app = FastAPI()
+
+@app.get("/")
+def read_root():
+    return {"Hello": "World"}
 # Database Dependency
 def get_db():
     """
