@@ -128,16 +128,16 @@ system_router = APIRouter(prefix="/system", tags=["System"])
 
 
 # --- CORS Middleware Configuration ---
-origins = [
-    "http://localhost:3008", "http://localhost:3004", "http://localhost:3001",
-    "http://localhost:3002", "http://localhost:3003", "http://localhost:3005",
-    "http://localhost:3006", "http://localhost:3007",
-]
+# origins = [
+#     "http://localhost:3008", "http://localhost:3004", "http://localhost:3001",
+#     "http://localhost:3002", "http://localhost:3003", "http://localhost:3005",
+#     "http://localhost:3006", "http://localhost:3007",
+# ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    # allow_origins=origins,
+    # allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
