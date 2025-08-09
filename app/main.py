@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # --- Pydantic and Python Standard Library Imports ---
-from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, Header, Request, Response
+from fastapi import FastAPI, Depends, HTTPException, status, APIRouter, Header, Request, Response, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -236,7 +236,8 @@ def get_my_client_companies(
 def get_client_company_events_endpoint(
     company_id: int,
     current_user: models.PlatformUser = Depends(get_current_platform_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    event_type: Optional[schemas.SDKEventType] = Query(None, description="Filter events by type, e.g., 'page_visit'"),
 ):
     """
     Retrieves all standard (Web2) events for a specific client company, accessible only by the owner.
@@ -245,7 +246,11 @@ def get_client_company_events_endpoint(
     if not company or company.platform_user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to view events for this company.")
     
-    return crud.get_events_for_client_company(db, client_company_id=company_id)
+    return crud.get_events_for_client_company(
+        db,
+        client_company_id=company_id,
+        event_type=event_type  # Pass the new parameter to the CRUD function
+    )
 
 @dashboard_router.get("/client-companies/{company_id}/web3-events", response_model=List[schemas.Web3Event])
 def get_client_company_web3_events_endpoint(

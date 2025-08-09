@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
 from passlib.context import CryptContext
-from sqlalchemy import func
+from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
 
 from .models import (ClientAppUser, ClientCompany, Event, PlatformMetrics,
@@ -289,11 +289,30 @@ def create_event(
     db.refresh(db_event)
     return db_event
 
-def get_events_for_client_company(db: Session, client_company_id: int) -> List[Event]:
+def get_events_for_client_company(
+    db: Session,
+    client_company_id: int,
+    skip: int = 0,
+    limit: int = 100,
+    event_type: Optional[SDKEventType] = None
+) -> List[Event]:
     """
-    Retrieves all standard (Web2) events associated with a specific client company.
+    Retrieves standard (Web2) events for a given client company, with optional filtering and pagination.
     """
-    return db.query(Event).filter(Event.client_company_id == client_company_id).all()
+    query = db.query(Event).filter(
+        Event.client_company_id == client_company_id
+    )
+    if event_type:
+        query = query.filter(Event.event_type == event_type)
+    
+    return query.order_by(
+        desc(Event.created_at)
+    ).offset(
+        skip
+    ).limit(
+        limit
+    ).all()
+
 
 def create_web3_event(
     db: Session,
