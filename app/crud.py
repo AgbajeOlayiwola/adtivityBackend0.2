@@ -226,6 +226,13 @@ def get_client_company_by_id(db: Session, company_id: int) -> Optional[ClientCom
     """Retrieves a client company by its unique ID."""
     return db.query(ClientCompany).filter(ClientCompany.id == company_id).first()
 
+def get_client_company_by_name(db: Session, name: str) -> Optional[ClientCompany]:
+    """
+    Retrieves a client company from the database by its name (case-insensitive).
+    This function was missing and has been added.
+    """
+    return db.query(ClientCompany).filter(func.lower(ClientCompany.name) == func.lower(name)).first()
+
 def get_client_companies_by_platform_user(db: Session, platform_user_id: int) -> List[ClientCompany]:
     """
     Retrieves all client companies that are owned by a specific platform user.
