@@ -182,7 +182,7 @@ def upsert_client_app_user_from_sdk_event(
         return existing_user
 
 # ----------- ClientCompany Operations -----------
-def create_client_company(
+def create_client_company_with_api_key(
     db: Session,
     name: str,
     platform_user_id: int
@@ -209,11 +209,11 @@ def get_client_company_by_api_key(db: Session, api_key: str) -> Optional[ClientC
     """
     Retrieves a client company by matching the hashed version of their SDK API key.
     """
-    company = db.query(ClientCompany).filter(ClientCompany.api_key_hash is not None).all()
+    companies = db.query(ClientCompany).filter(ClientCompany.api_key_hash is not None).all()
     
     # We must iterate through the companies and verify the hash against the provided key
     # since bcrypt hashes are not directly comparable in a SQL query.
-    for c in company:
+    for c in companies:
         try:
             if pwd_context.verify(api_key, c.api_key_hash):
                 return c

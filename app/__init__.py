@@ -20,7 +20,8 @@ from .models import (
     ClientCompany,     # UPDATED: Blueprint for companies using your SDK, now linked to a PlatformUser.
     ClientAppUser,     # RENAMED: Formerly 'User', now for users of *your clients'* applications.
     PlatformMetrics,   # Blueprint for general analytics data about your platform.
-    Event              # Blueprint for individual events sent by your SDK.
+    Event,
+    Web3Event # Blueprint for individual events sent by your SDK.
 )
 
 # --- 3. Data Forms (Schemas from schemas.py) ---
@@ -46,11 +47,8 @@ from .schemas import (
     ClientAppUser,              # Full form for ClientAppUser details (as retrieved from DB).
 
     # Schemas for general platform metrics
-    MetricsBase,                # Base schema for a single metric.
     MetricsCreate,              # Form for creating new platform metrics.
     PlatformMetrics,            # Full form for platform metrics (as retrieved from DB).
-    TimeSeriesDataPoint,        # A single data point for a time-series chart.
-    MetricsResponse,            # Response schema for metrics endpoints.
     PlatformType,               # Enum for platform types (e.g., "web2", "web3").
 
     # Schemas for authentication tokens and SDK events
@@ -60,13 +58,18 @@ from .schemas import (
     Event,                      # Full form for event details (as retrieved from DB).
     Web3EventBase,              # Basic form for Web3-specific event details.
     Web3Event,                  # Full form for Web3 events (as retrieved from DB).
-    SDKEventPayload             # Form for the data payload received from your SDK.
+    SDKEventPayload,            # Form for the data payload received from your SDK.
+    SDKEventType,
 )
 
 # --- 4. Database Operations (CRUD from crud.py) ---
 # These are the "recipes" for performing specific actions (Create, Read, Update, Delete)
 # on your database models.
 from .crud import (
+    # CRUD operations for password hashing
+    get_password_hash,
+    verify_password,
+
     # CRUD operations for PlatformUser
     create_platform_user,           # Create a new platform user.
     get_platform_user_by_email,     # Find a platform user by email.
@@ -82,14 +85,20 @@ from .crud import (
     upsert_client_app_user_from_sdk_event, # Create or update client app user from SDK event.
 
     # CRUD operations for ClientCompany
-    create_client_company,              # Create a new client company (linked to a PlatformUser).
+    create_client_company_with_api_key, # CORRECTED: Create a new client company (linked to a PlatformUser).
     get_client_company_by_api_key,      # Find a client company by its SDK API key hash.
     get_client_company_by_id,           # Find a client company by its ID.
+    get_client_company_by_name,
     get_client_companies_by_platform_user, # Find all companies owned by a specific PlatformUser.
+    regenerate_client_company_api_key,
 
     # CRUD operations for Events
     create_event,                       # Create a new event record.
     get_events_for_client_company,      # Get all events for a specific client company.
+    create_web3_event,
+    get_web3_events_for_client_company,
+    handle_sdk_event,
+    handle_web3_sdk_event,
 
     # CRUD operations for PlatformMetrics
     create_platform_metric,             # Create a new platform metric record.
@@ -114,6 +123,7 @@ __all__ = [
     'ClientAppUser',
     'PlatformMetrics',
     'Event',
+    'Web3Event',
 
     # Schemas (Data Forms)
     'PlatformUserBase',
@@ -128,11 +138,8 @@ __all__ = [
     'ClientAppUserBase',
     'ClientAppUserCreate',
     'ClientAppUser',
-    'MetricsBase',
     'MetricsCreate',
     'PlatformMetrics',
-    'TimeSeriesDataPoint',
-    'MetricsResponse',
     'PlatformType',
     'Token',
     'TokenData',
@@ -141,8 +148,11 @@ __all__ = [
     'Web3EventBase',
     'Web3Event',
     'SDKEventPayload',
+    'SDKEventType',
 
     # CRUD Operations (Recipes)
+    'get_password_hash',
+    'verify_password',
     'create_platform_user',
     'get_platform_user_by_email',
     'get_platform_user_by_id',
@@ -153,12 +163,18 @@ __all__ = [
     'get_client_app_user_by_wallet',
     'update_client_app_user_verification',
     'upsert_client_app_user_from_sdk_event',
-    'create_client_company',
+    'create_client_company_with_api_key',
     'get_client_company_by_api_key',
     'get_client_company_by_id',
+    'get_client_company_by_name',
     'get_client_companies_by_platform_user',
+    'regenerate_client_company_api_key',
     'create_event',
     'get_events_for_client_company',
+    'create_web3_event',
+    'get_web3_events_for_client_company',
+    'handle_sdk_event',
+    'handle_web3_sdk_event',
     'create_platform_metric',
     'get_metrics_by_timeframe_for_companies',
     'calculate_growth_rate',
