@@ -306,7 +306,7 @@ def get_events_for_client_company(
         query = query.filter(Event.event_type == event_type)
     
     return query.order_by(
-        desc(Event.created_at)
+        desc(Event.timestamp)
     ).offset(
         skip
     ).limit(
