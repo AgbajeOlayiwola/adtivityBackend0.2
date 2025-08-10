@@ -303,6 +303,18 @@ def regenerate_api_key_for_company(
         api_key=raw_api_key, # This is the crucial part: we return the raw key here.
     )
 
+@dashboard_router.get("/all-events", response_model=List[schemas.Event])
+def get_all_events(
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Retrieves all standard (Web2) events for all client companies associated with the
+    authenticated platform user.
+    """
+    return crud.get_all_events_for_user(db=db, platform_user_id=current_user.id)
+
+
 # SDK Router: Endpoints for client SDKs to send data.
 @sdk_router.post("/event", status_code=status.HTTP_202_ACCEPTED)
 def receive_sdk_event(

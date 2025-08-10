@@ -541,3 +541,27 @@ def calculate_growth_rate(db: Session, days: int = 30) -> float:
     end_value = float(end_metrics)
     
     return ((end_value - start_value) / start_value) * 100
+
+def get_all_events_for_user(db: Session, platform_user_id: int):
+    """
+    Retrieves all standard events for a given platform user by first
+    finding all the companies they own, and then fetching all events
+    associated with those companies.
+    """
+    # 1. Get all company IDs for the authenticated user
+    company_ids = db.query(ClientCompany.id).filter(
+        ClientCompany.platform_user_id == platform_user_id
+    ).all()
+    
+    # The result is a list of tuples, e.g., [(1,), (2,)].
+    # We need to flatten it into a simple list of integers.
+    company_ids = [id_tuple[0] for id_tuple in company_ids]
+    
+    # 2. If the user has no companies, return an empty list immediately
+    if not company_ids:
+        return []
+
+    # 3. Use the company IDs to query for all events
+    return db.query(Event).filter(
+        Event.client_company_id.in_(company_ids)
+    ).all()
