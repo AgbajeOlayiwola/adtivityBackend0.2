@@ -20,15 +20,12 @@ from .config import settings
 # Create all database tables based on the models.
 models.Base.metadata.create_all(bind=engine)
 
-# This is an extra app instance from the original code,
-# which can be removed to avoid confusion. The app below is the main one.
-# app = FastAPI() 
-
 # Database Dependency
 def get_db():
     """
     Generator function that provides a database session for each request.
     Ensures the session is properly closed after the request is completed.
+    This is a standard and correct pattern in FastAPI.
     """
     db = SessionLocal()
     try:
@@ -112,6 +109,7 @@ def get_current_client_company(x_api_key: str = Header(None), db: Session = Depe
     return company
 
 # --- FastAPI App and Router Initialization ---
+# The main application instance.
 app = FastAPI(
     title="Adtivity API",
     description="API for Adtivity - A multi-tenant analytics platform for Web2 and Web3 applications.",
@@ -132,8 +130,8 @@ system_router = APIRouter(prefix="/system", tags=["System"])
 
 
 # --- CORS Middleware Configuration ---
-# --- FIX: Updated origins to allow any client to call the API.
-# This resolves CORS errors while keeping the API secure via API keys and JWTs.
+# Allow all origins to enable calls from any client. This is fine because
+# authentication is handled by JWTs and API keys.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

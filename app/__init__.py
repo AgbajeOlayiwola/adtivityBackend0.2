@@ -105,6 +105,15 @@ from .crud import (
     get_metrics_by_timeframe_for_companies, # Get platform metrics for a specific time range for multiple companies.
     calculate_growth_rate               # Calculate growth rate based on metrics.
 )
+# app/__init__.py
+
+from dotenv import load_dotenv
+
+# This must be the very first thing that happens
+load_dotenv()
+
+from .database import Base, engine, SessionLocal, get_db
+from . import crud, models, schemas
 
 # --- 5. The '__all__' List: What's Publicly Exported ---
 # This special Python list defines what names are exposed when someone does
