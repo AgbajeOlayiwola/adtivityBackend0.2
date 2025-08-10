@@ -384,6 +384,23 @@ def handle_sdk_event(
             timestamp=event_timestamp
         )
         logger.info(f"Processed identify event for user {payload.user_id} for company {client_company_id}.")
+
+        # --- NEW LOGIC: ALIASING ANONYMOUS EVENTS ---
+        # Find all previous events from this session that were not associated with a user_id
+        if payload.anonymous_id:
+            anonymous_events = db.query(Event).filter(
+                Event.client_company_id == client_company_id,
+                Event.anonymous_id == payload.anonymous_id,
+                Event.user_id.is_(None)
+            ).all()
+
+            # Update their user_id to the newly identified user
+            for event in anonymous_events:
+                event.user_id = payload.user_id
+            
+            if anonymous_events:
+                db.commit()
+                logger.info(f"Aliased {len(anonymous_events)} anonymous events to user {payload.user_id} for company {client_company_id}.")
     
     elif event_type == SDKEventType.TRACK and event_name:
         create_event(
