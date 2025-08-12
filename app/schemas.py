@@ -1,4 +1,3 @@
-# schemas.py
 from __future__ import annotations
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List, Dict, Any, Union
@@ -137,6 +136,16 @@ class ClientCompanyRegenerateAPIKeyResponse(ClientCompanyCreateResponse):
     """
     api_key: str
 
+class ClientCompanyUpdate(BaseModel):
+    """
+    Schema for updating an existing client company's details.
+    All fields are optional to allow for partial updates.
+    """
+    name: Optional[str] = None
+
+    class Config:
+        extra = "ignore"
+        
 class ClientCompany(ClientCompanyBase):
     """
     The complete schema for a ClientCompany, as retrieved from the database.

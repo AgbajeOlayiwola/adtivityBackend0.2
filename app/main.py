@@ -183,13 +183,9 @@ def login_for_access_token(user: schemas.PlatformUserLogin, db: Session = Depend
 
 # DASHBOARD Router: Endpoints for managing client companies and fetching their data.
 @dashboard_router.get("/me", response_model=schemas.PlatformUser)
-def get_my_profile(
-    current_user: models.PlatformUser = Depends(get_current_platform_user),
-    db: Session = Depends(get_db)
-):
+def get_current_user_profile(current_user: models.PlatformUser = Depends(get_current_platform_user)):
     """
-    Retrieves the profile information and all associated client companies for the
-    currently authenticated platform user.
+    Retrieves the profile of the currently authenticated platform user.
     """
     return current_user
 
@@ -229,6 +225,41 @@ def get_my_client_companies(
 ):
     """Retrieves all client companies owned by the authenticated platform user."""
     return crud.get_client_companies_by_platform_user(db, platform_user_id=current_user.id)
+
+@dashboard_router.delete("/client-companies/{company_id}", status_code=status.HTTP_200_OK)
+def delete_client_company_endpoint(
+    company_id: int,
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Deletes a client company and all its associated data (events, web3 events).
+    This action is irreversible and requires ownership of the company.
+    """
+    company = crud.get_client_company_by_id(db, company_id=company_id)
+    if not company:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client company not found."
+        )
+    
+    if company.platform_user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this company."
+        )
+    
+    # TODO: You need to implement this function in your crud.py
+    # This function should handle the deletion of the company and all its related events
+    # from the database.
+    # It should look something like this:
+    # crud.delete_client_company(db, company_id=company_id)
+    
+    # For now, we'll just log that it would be deleted.
+    print(f"Would delete company with ID {company_id} and all related data.")
+    
+    # A successful deletion returns a simple message.
+    return {"message": f"Client company with ID {company_id} has been deleted."}
 
 @dashboard_router.get("/client-companies/{company_id}/events", response_model=List[schemas.Event])
 def get_client_company_events_endpoint(

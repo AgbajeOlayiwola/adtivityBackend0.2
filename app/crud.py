@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from .models import (ClientAppUser, ClientCompany, Event, PlatformMetrics,
                      PlatformUser, Web3Event)
-from .schemas import SDKEventPayload, SDKEventType
+from .schemas import SDKEventPayload, SDKEventType, ClientCompanyUpdate # Added ClientCompanyUpdate
 
 # Set up logging for better debugging and monitoring
 logger = logging.getLogger(__name__)
@@ -257,6 +257,52 @@ def regenerate_client_company_api_key(db: Session, company: ClientCompany) -> Tu
     # 4. Return the updated company and the raw key for one-time display
     return company, raw_api_key
 
+def delete_client_company(db: Session, company_id: int):
+    """
+    Deletes a client company and all associated data, including events and Web3 events.
+    This is a permanent and irreversible action.
+    """
+    # First, get the company to ensure it exists
+    company = get_client_company_by_id(db, company_id)
+    if not company:
+        raise ValueError(f"Client company with ID {company_id} not found.")
+
+    # Delete all associated events for the company
+    db.query(Event).filter(Event.client_company_id == company_id).delete(
+        synchronize_session=False
+    )
+    db.query(Web3Event).filter(Web3Event.client_company_id == company_id).delete(
+        synchronize_session=False
+    )
+    db.query(PlatformMetrics).filter(PlatformMetrics.client_company_id == company_id).delete(
+        synchronize_session=False
+    )
+
+    # Now delete the company itself
+    db.delete(company)
+    db.commit()
+
+    logger.info(f"Successfully deleted client company with ID {company_id} and all related data.")
+
+
+def update_client_company(db: Session, company_id: int, company_update: ClientCompanyUpdate) -> Optional[ClientCompany]:
+    """
+    Updates the details of an existing client company.
+    """
+    company = get_client_company_by_id(db, company_id)
+    if not company:
+        return None
+    
+    # Iterate over the provided update data and apply changes
+    update_data = company_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(company, key, value)
+    
+    db.commit()
+    db.refresh(company)
+    
+    return company
+
 
 # ----------- Event Operations (Web2 and Web3) -----------
 def create_event(
@@ -415,6 +461,22 @@ def handle_sdk_event(
             timestamp=event_timestamp,
         )
         logger.info(f"Processed track event '{event_name}' for company {client_company_id}.")
+
+    # --- ADDED LOGIC FOR PAGE_VISIT EVENTS ---
+    elif event_type == SDKEventType.PAGE_VISIT:
+        create_event(
+            db=db,
+            eventName="Page Visited",
+            event_type=event_type.value,
+            client_company_id=client_company_id,
+            user_id=payload.user_id,
+            anonymous_id=payload.anonymous_id,
+            session_id=payload.session_id,
+            properties=payload.properties,
+            timestamp=event_timestamp,
+        )
+        logger.info(f"Processed page visit event for company {client_company_id}.")
+
     else:
         logger.warning(f"Received unhandled event type '{event_type}' for company {client_company_id}: {payload.dict()}. Skipping.")
 
