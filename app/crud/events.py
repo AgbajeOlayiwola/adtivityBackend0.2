@@ -1,10 +1,11 @@
 """Event-related CRUD operations."""
 
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
+import uuid
 from sqlalchemy.orm import Session
 
-from ..models import Event, Web3Event
+from ..models import Event, Web3Event, ClientCompany
 from ..schemas import SDKEventPayload
 
 
@@ -12,7 +13,7 @@ def create_event(
     db: Session,
     event_name: str,
     event_type: str,
-    client_company_id: int,
+    client_company_id: uuid.UUID,
     user_id: Optional[str] = None,
     anonymous_id: Optional[str] = None,
     session_id: Optional[str] = None,
@@ -28,7 +29,7 @@ def create_event(
         anonymous_id=anonymous_id,
         session_id=session_id,
         properties=properties or {},
-        timestamp=timestamp or datetime.utcnow(),
+        timestamp=timestamp or datetime.now(timezone.utc),
     )
     db.add(db_event)
     db.commit()
@@ -38,7 +39,7 @@ def create_event(
 
 def get_events_for_client_company(
     db: Session,
-    client_company_id: int,
+    client_company_id: uuid.UUID,
     event_type: Optional[str] = None,
 ) -> List[Event]:
     """Get events for a specific client company."""
@@ -53,7 +54,7 @@ def get_events_for_client_company(
 def create_web3_event(
     db: Session,
     event_name: str,
-    client_company_id: int,
+    client_company_id: uuid.UUID,
     user_id: str,
     wallet_address: str,
     chain_id: str,
@@ -72,7 +73,7 @@ def create_web3_event(
         transaction_hash=transaction_hash,
         contract_address=contract_address,
         properties=properties or {},
-        timestamp=timestamp or datetime.utcnow(),
+        timestamp=timestamp or datetime.now(timezone.utc),
     )
     db.add(db_event)
     db.commit()
@@ -81,7 +82,7 @@ def create_web3_event(
 
 
 def get_web3_events_for_client_company(
-    db: Session, client_company_id: int
+    db: Session, client_company_id: uuid.UUID
 ) -> List[Web3Event]:
     """Get Web3 events for a specific client company."""
     return db.query(Web3Event).filter(
@@ -89,7 +90,7 @@ def get_web3_events_for_client_company(
     ).order_by(Web3Event.timestamp.desc()).all()
 
 
-def handle_sdk_event(db: Session, company_id: int, payload: SDKEventPayload) -> Event:
+def handle_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventPayload) -> Event:
     """Handle a standard SDK event."""
     # Extract event data from payload
     event_name = payload.eventName or payload.type or "unknown"
@@ -103,7 +104,8 @@ def handle_sdk_event(db: Session, company_id: int, payload: SDKEventPayload) -> 
             db=db,
             email=payload.user_id,
             wallet_address=payload.wallet_address,
-            properties=payload.properties
+            name=None,
+            country=None
         )
         if user:
             user_id = str(user.id)
@@ -122,7 +124,7 @@ def handle_sdk_event(db: Session, company_id: int, payload: SDKEventPayload) -> 
     )
 
 
-def handle_web3_sdk_event(db: Session, company_id: int, payload: SDKEventPayload) -> Web3Event:
+def handle_web3_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventPayload) -> Web3Event:
     """Handle a Web3 SDK event."""
     # Extract Web3-specific data
     event_name = payload.eventName or payload.type or "web3_event"
@@ -137,7 +139,8 @@ def handle_web3_sdk_event(db: Session, company_id: int, payload: SDKEventPayload
             db=db,
             email=payload.user_id,
             wallet_address=payload.wallet_address,
-            properties=payload.properties
+            name=None,
+            country=None
         )
     
     # Create the Web3 event
@@ -153,3 +156,28 @@ def handle_web3_sdk_event(db: Session, company_id: int, payload: SDKEventPayload
         properties=payload.properties or {},
         timestamp=payload.timestamp
     ) 
+
+
+def get_all_events_for_user(db: Session, platform_user_id: uuid.UUID):
+    """
+    Retrieves all standard events for a given platform user by first
+    finding all the companies they own, and then fetching all events
+    associated with those companies.
+    """
+    # 1. Get all company IDs for the authenticated user
+    company_ids = db.query(ClientCompany.id).filter(
+        ClientCompany.platform_user_id == platform_user_id
+    ).all()
+    
+    # The result is a list of tuples, e.g., [(uuid1,), (uuid2,)].
+    # We need to flatten it into a simple list of UUIDs.
+    company_ids = [id_tuple[0] for id_tuple in company_ids]
+    
+    # 2. If the user has no companies, return an empty list immediately
+    if not company_ids:
+        return []
+
+    # 3. Use the company IDs to query for all events
+    return db.query(Event).filter(
+        Event.client_company_id.in_(company_ids)
+    ).all() 

@@ -1,6 +1,7 @@
 """Company-related CRUD operations."""
 
 import secrets
+import uuid
 from typing import Optional, Tuple
 from sqlalchemy.orm import Session
 
@@ -11,7 +12,7 @@ from .auth import get_password_hash
 def create_client_company_with_api_key(
     db: Session,
     name: str,
-    platform_user_id: int,
+    platform_user_id: uuid.UUID,
 ) -> Tuple[ClientCompany, str]:
     """Create a new client company with an API key."""
     # Generate a secure API key
@@ -46,7 +47,7 @@ def get_client_company_by_api_key(db: Session, api_key: str) -> Optional[ClientC
     return None
 
 
-def get_client_company_by_id(db: Session, company_id: int) -> Optional[ClientCompany]:
+def get_client_company_by_id(db: Session, company_id: uuid.UUID) -> Optional[ClientCompany]:
     """Get a client company by ID."""
     return db.query(ClientCompany).filter(ClientCompany.id == company_id).first()
 
@@ -57,7 +58,7 @@ def get_client_company_by_name(db: Session, name: str) -> Optional[ClientCompany
 
 
 def get_client_companies_by_platform_user(
-    db: Session, platform_user_id: int
+    db: Session, platform_user_id: uuid.UUID
 ) -> list[ClientCompany]:
     """Get all client companies owned by a platform user."""
     return db.query(ClientCompany).filter(
@@ -67,7 +68,7 @@ def get_client_companies_by_platform_user(
 
 
 def regenerate_client_company_api_key(
-    db: Session, company_id: int
+    db: Session, company_id: uuid.UUID
 ) -> Tuple[ClientCompany, str]:
     """Regenerate API key for a client company."""
     company = get_client_company_by_id(db, company_id)

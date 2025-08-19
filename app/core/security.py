@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import HTTPException, status, Depends
+from fastapi import HTTPException, status, Depends, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
@@ -89,7 +89,7 @@ async def get_current_platform_user(
 
 
 async def get_current_client_company(
-    x_api_key: str = Depends(HTTPBearer(auto_error=False)),
+    x_api_key: str = Header(None, alias="X-API-Key"),
     db: Session = Depends(get_db)
 ) -> models.ClientCompany:
     """Dependency to get the current authenticated client company."""
@@ -99,7 +99,7 @@ async def get_current_client_company(
             detail="X-API-Key header missing"
         )
     
-    company = crud.get_client_company_by_api_key(db, api_key=x_api_key.credentials)
+    company = crud.get_client_company_by_api_key(db, api_key=x_api_key)
     if not company or not company.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

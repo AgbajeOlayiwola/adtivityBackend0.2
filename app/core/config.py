@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Application settings with environment variable support."""
     
     # Database Configuration
-    DATABASE_URL: str = Field(..., description="PostgreSQL database connection URL")
+    DATABASE_URL: str = Field(default="postgresql://postgres:password@localhost:5432/adtivity", description="Database connection URL (defaults to local PostgreSQL)")
     
     # Security Configuration
     SECRET_KEY: str = Field(

@@ -2,6 +2,7 @@
 
 from typing import List, Optional
 from datetime import datetime
+import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -10,7 +11,7 @@ from ..models import PlatformMetrics
 
 def create_platform_metric(
     db: Session,
-    client_company_id: int,
+    client_company_id: uuid.UUID,
     total_users: int = 0,
     active_sessions: int = 0,
     conversion_rate: float = 0.0,
@@ -54,7 +55,7 @@ def create_platform_metric(
 
 def get_metrics_by_timeframe_for_companies(
     db: Session,
-    company_ids: List[int],
+    company_ids: List[uuid.UUID],
     start: datetime,
     end: datetime,
     platform: str = "both",
@@ -87,7 +88,7 @@ def calculate_growth_rate(
 
 
 def get_all_events_for_user(
-    db: Session, platform_user_id: int
+    db: Session, platform_user_id: uuid.UUID
 ) -> List:
     """Get all events for companies owned by a platform user."""
     # This would need to be implemented based on your specific requirements

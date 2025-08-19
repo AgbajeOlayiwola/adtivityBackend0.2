@@ -3,6 +3,7 @@ from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
+import uuid
 
 # ====================================================================================
 # --- Enums: Defines fixed sets of choices for specific fields. ---
@@ -54,7 +55,7 @@ class TokenData(BaseModel):
     A model to hold the data decoded from a JWT access token.
     It includes the user's ID, email, and security scopes.
     """
-    id: Optional[int] = None
+    id: Optional[uuid.UUID] = None
     email: Optional[str] = None
     scopes: List[str] = []
 
@@ -91,7 +92,7 @@ class PlatformUser(PlatformUserBase):
     It includes database-specific fields like `id` and `created_at`.
     Note the use of `from_attributes = True` for SQLAlchemy compatibility.
     """
-    id: int
+    id: uuid.UUID
     created_at: datetime
     last_login: Optional[datetime] = None
     client_companies: List['ClientCompany'] = []
@@ -120,8 +121,8 @@ class ClientCompanyCreateResponse(ClientCompanyBase):
     The response schema for a newly created ClientCompany.
     Crucially, it includes the one-time-return `api_key`.
     """
-    id: int
-    platform_user_id: int
+    id: uuid.UUID
+    platform_user_id: uuid.UUID
     created_at: datetime
     is_active: bool
     api_key: str  # Only returned on creation
@@ -151,8 +152,8 @@ class ClientCompany(ClientCompanyBase):
     The complete schema for a ClientCompany, as retrieved from the database.
     This schema does NOT include the raw `api_key` for security reasons.
     """
-    id: int
-    platform_user_id: int
+    id: uuid.UUID
+    platform_user_id: uuid.UUID
     is_active: bool
     created_at: datetime
 
@@ -186,7 +187,7 @@ class ClientAppUser(ClientAppUserBase):
     """
     The complete schema for a ClientAppUser, as retrieved from the database.
     """
-    id: int
+    id: uuid.UUID
     created_at: datetime
     last_login: Optional[datetime] = None
 
@@ -211,8 +212,8 @@ class Event(EventBase):
     """
     The complete schema for a processed Event, as it will be stored in the database.
     """
-    id: int
-    client_company_id: int
+    id: uuid.UUID
+    client_company_id: uuid.UUID
     timestamp: datetime
 
     class Config:
@@ -235,8 +236,8 @@ class Web3Event(Web3EventBase):
     """
     The complete schema for a processed Web3Event, as it will be stored in the database.
     """
-    id: int
-    client_company_id: int
+    id: uuid.UUID
+    client_company_id: uuid.UUID
     timestamp: datetime
 
     class Config:
@@ -309,9 +310,9 @@ class PlatformMetrics(MetricsCreate):
     """
     The complete schema for a PlatformMetrics record, as retrieved from the database.
     """
-    id: int
+    id: uuid.UUID
     timestamp: datetime
-    client_company_id: int
+    client_company_id: uuid.UUID
 
     class Config:
         from_attributes = True
