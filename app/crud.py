@@ -1,5 +1,6 @@
 import logging
 import secrets
+import uuid
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
@@ -33,8 +34,8 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 # --- Type Aliases ---
-UserID = int
-MetricID = int
+UserID = uuid.UUID
+MetricID = uuid.UUID
 
 # ----------- PlatformUser Operations -----------
 def create_platform_user(
@@ -64,7 +65,7 @@ def get_platform_user_by_email(db: Session, email: str) -> Optional[PlatformUser
     """
     return db.query(PlatformUser).filter(func.lower(PlatformUser.email) == func.lower(email)).first()
 
-def get_platform_user_by_id(db: Session, user_id: int) -> Optional[PlatformUser]:
+def get_platform_user_by_id(db: Session, user_id: uuid.UUID) -> Optional[PlatformUser]:
     """
     Retrieves a platform user from the database by their unique ID.
     """
@@ -221,7 +222,7 @@ def get_client_company_by_api_key(db: Session, api_key: str) -> Optional[ClientC
             continue
     return None
 
-def get_client_company_by_id(db: Session, company_id: int) -> Optional[ClientCompany]:
+def get_client_company_by_id(db: Session, company_id: uuid.UUID) -> Optional[ClientCompany]:
     """Retrieves a client company by its unique ID."""
     return db.query(ClientCompany).filter(ClientCompany.id == company_id).first()
 
@@ -257,7 +258,7 @@ def regenerate_client_company_api_key(db: Session, company: ClientCompany) -> Tu
     # 4. Return the updated company and the raw key for one-time display
     return company, raw_api_key
 
-def delete_client_company(db: Session, company_id: int):
+def delete_client_company(db: Session, company_id: uuid.UUID):
     """
     Deletes a client company and all associated data, including events and Web3 events.
     This is a permanent and irreversible action.
@@ -285,7 +286,7 @@ def delete_client_company(db: Session, company_id: int):
     logger.info(f"Successfully deleted client company with ID {company_id} and all related data.")
 
 
-def update_client_company(db: Session, company_id: int, company_update: ClientCompanyUpdate) -> Optional[ClientCompany]:
+def update_client_company(db: Session, company_id: uuid.UUID, company_update: ClientCompanyUpdate) -> Optional[ClientCompany]:
     """
     Updates the details of an existing client company.
     """
@@ -309,7 +310,7 @@ def create_event(
     db: Session,
     eventName: str,
     event_type: str,
-    client_company_id: int,
+    client_company_id: uuid.UUID,
     user_id: Optional[str] = None,
     anonymous_id: Optional[str] = None,
     session_id: Optional[str] = None,
@@ -336,7 +337,7 @@ def create_event(
 
 def get_events_for_client_company(
     db: Session,
-    client_company_id: int,
+    client_company_id: uuid.UUID,
     skip: int = 0,
     limit: int = 100,
     event_type: Optional[SDKEventType] = None
@@ -361,7 +362,7 @@ def get_events_for_client_company(
 
 def create_web3_event(
     db: Session,
-    client_company_id: int,
+    client_company_id: uuid.UUID,
     user_id: str,
     event_name: str,
     wallet_address: str,
@@ -387,7 +388,7 @@ def create_web3_event(
     db.refresh(db_web3_event)
     return db_web3_event
 
-def get_web3_events_for_client_company(db: Session, client_company_id: int) -> List[Web3Event]:
+def get_web3_events_for_client_company(db: Session, client_company_id: uuid.UUID) -> List[Web3Event]:
     """
     Retrieves all Web3 events associated with a specific client company.
     """
@@ -406,7 +407,7 @@ def _parse_timestamp(timestamp_str: Optional[str]) -> datetime:
 
 def handle_sdk_event(
     db: Session,
-    client_company_id: int,
+    client_company_id: uuid.UUID,
     payload: SDKEventPayload,
 ):
     """
@@ -483,7 +484,7 @@ def handle_sdk_event(
 
 def handle_web3_sdk_event(
     db: Session,
-    client_company_id: int,
+    client_company_id: uuid.UUID,
     payload: SDKEventPayload,
 ):
     """
@@ -529,7 +530,7 @@ def handle_web3_sdk_event(
 # ----------- Metrics Operations -----------
 def create_platform_metric(
     db: Session,
-    client_company_id: int,
+    client_company_id: uuid.UUID,
     total_users: int = 0,
     active_sessions: int = 0,
     conversion_rate: float = 0.0,
@@ -573,7 +574,7 @@ def create_platform_metric(
 
 def get_metrics_by_timeframe_for_companies(
     db: Session,
-    company_ids: List[int],
+    company_ids: List[uuid.UUID],
     start: datetime,
     end: datetime,
     platform: Optional[str] = None,
@@ -621,7 +622,7 @@ def calculate_growth_rate(db: Session, days: int = 30) -> float:
     
     return ((end_value - start_value) / start_value) * 100
 
-def get_all_events_for_user(db: Session, platform_user_id: int):
+def get_all_events_for_user(db: Session, platform_user_id: uuid.UUID):
     """
     Retrieves all standard events for a given platform user by first
     finding all the companies they own, and then fetching all events

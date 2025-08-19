@@ -1,8 +1,9 @@
 """Dashboard management endpoints."""
 
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
+import uuid
 
 from ..core.database import get_db
 from ..core.security import get_current_platform_user
@@ -62,7 +63,7 @@ async def get_my_client_companies(
 
 @router.delete("/client-companies/{company_id}", status_code=status.HTTP_200_OK)
 async def delete_client_company(
-    company_id: int,
+    company_id: uuid.UUID = Path(..., description="The UUID of the client company to delete"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
 ) -> dict:
@@ -88,7 +89,7 @@ async def delete_client_company(
 
 @router.get("/client-companies/{company_id}/events", response_model=List[schemas.Event])
 async def get_client_company_events(
-    company_id: int,
+    company_id: uuid.UUID = Path(..., description="The UUID of the client company"),
     event_type: schemas.SDKEventType = Query(None, description="Filter events by type"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
@@ -110,7 +111,7 @@ async def get_client_company_events(
 
 @router.get("/client-companies/{company_id}/web3-events", response_model=List[schemas.Web3Event])
 async def get_client_company_web3_events(
-    company_id: int,
+    company_id: uuid.UUID = Path(..., description="The UUID of the client company"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
 ) -> List[schemas.Web3Event]:
@@ -127,7 +128,7 @@ async def get_client_company_web3_events(
 
 @router.post("/client-companies/{company_id}/regenerate-api-key", response_model=schemas.ClientCompanyRegenerateAPIKeyResponse)
 async def regenerate_api_key_for_company(
-    company_id: int,
+    company_id: uuid.UUID = Path(..., description="The UUID of the client company"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
 ) -> schemas.ClientCompanyRegenerateAPIKeyResponse:

@@ -5,8 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# Import the settings from our new config file
-from .config import settings
+# Import the settings from the core config file
+from .core.config import settings
 
 # This line now uses the settings object, which gets its value from the .env file
 SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL

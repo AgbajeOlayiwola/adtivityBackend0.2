@@ -27,13 +27,16 @@ from .events import (
     create_web3_event,
     get_web3_events_for_client_company,
     handle_sdk_event,
-    handle_web3_sdk_event
+    handle_web3_sdk_event,
+    get_all_events_for_user
 )
 from .metrics import (
     create_platform_metric,
     get_metrics_by_timeframe_for_companies,
     calculate_growth_rate
 )
+
+
 
 __all__ = [
     # Auth
@@ -67,9 +70,12 @@ __all__ = [
     "get_web3_events_for_client_company",
     "handle_sdk_event",
     "handle_web3_sdk_event",
+    "get_all_events_for_user",
     
     # Metrics
     "create_platform_metric",
     "get_metrics_by_timeframe_for_companies",
-    "calculate_growth_rate"
+    "calculate_growth_rate",
+    
+
 ] 

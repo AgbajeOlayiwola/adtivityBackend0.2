@@ -8,6 +8,8 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, T
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.ext.declarative import declarative_base
+import uuid
+from sqlalchemy.dialects.postgresql import UUID
 
 # The `declarative_base()` is a class that lets us define our tables as Python classes.
 Base = declarative_base()
@@ -21,7 +23,7 @@ class PlatformUser(Base):
     """
     __tablename__ = "platform_users"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     name = Column(String)
@@ -43,14 +45,14 @@ class ClientCompany(Base):
     """
     __tablename__ = "client_companies"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     name = Column(String, index=True, nullable=False)
     api_key_hash = Column(String, nullable=False, unique=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # A foreign key to link this company to a PlatformUser.
-    platform_user_id = Column(Integer, ForeignKey("platform_users.id"), nullable=False)
+    platform_user_id = Column(UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=False)
     
     # The relationship with the PlatformUser table.
     platform_user = relationship("PlatformUser", back_populates="client_companies")
@@ -67,7 +69,7 @@ class ClientAppUser(Base):
     """
     __tablename__ = "client_app_users"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     email = Column(String, index=True, unique=True)
     hashed_password = Column(String)
     name = Column(String)
@@ -88,7 +90,7 @@ class Event(Base):
     """
     __tablename__ = "events"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     event_name = Column(String, nullable=False)
     event_type = Column(String, nullable=False)
     user_id = Column(String)
@@ -98,7 +100,7 @@ class Event(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     
     # A foreign key to link the event to the company that sent it.
-    client_company_id = Column(Integer, ForeignKey("client_companies.id"), nullable=False)
+    client_company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False)
 
     # The relationship with the ClientCompany table.
     client_company = relationship("ClientCompany", back_populates="events")
@@ -112,7 +114,7 @@ class Web3Event(Base):
     """
     __tablename__ = "web3_events"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(String, nullable=False)
     event_name = Column(String, nullable=False)
     wallet_address = Column(String, nullable=False, index=True)
@@ -123,7 +125,7 @@ class Web3Event(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
     # A foreign key to link the Web3 event to the company that sent it.
-    client_company_id = Column(Integer, ForeignKey("client_companies.id"), nullable=False)
+    client_company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False)
 
     # The relationship with the ClientCompany table.
     client_company = relationship("ClientCompany", back_populates="web3_events")
@@ -136,7 +138,7 @@ class PlatformMetrics(Base):
     """
     __tablename__ = "platform_metrics"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     
     # Metrics for Web2
@@ -162,4 +164,4 @@ class PlatformMetrics(Base):
     contract_address = Column(String)
     
     # A foreign key to link metrics to a specific client company
-    client_company_id = Column(Integer, ForeignKey("client_companies.id"), nullable=False)
+    client_company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False)

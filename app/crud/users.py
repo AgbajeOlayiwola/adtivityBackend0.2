@@ -1,6 +1,7 @@
 """User-related CRUD operations."""
 
 from typing import Optional
+import uuid
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -35,7 +36,7 @@ def get_platform_user_by_email(db: Session, email: str) -> Optional[PlatformUser
     ).first()
 
 
-def get_platform_user_by_id(db: Session, user_id: int) -> Optional[PlatformUser]:
+def get_platform_user_by_id(db: Session, user_id: uuid.UUID) -> Optional[PlatformUser]:
     """Get a platform user by ID."""
     return db.query(PlatformUser).filter(PlatformUser.id == user_id).first()
 
@@ -50,8 +51,8 @@ def authenticate_platform_user(db: Session, email: str, password: str) -> Option
 
 def create_client_app_user(
     db: Session,
-    email: str,
-    hashed_password: str,
+    email: Optional[str] = None,
+    hashed_password: Optional[str] = None,
     name: Optional[str] = None,
     country: Optional[str] = None,
     subscription_plan: str = "free",
@@ -76,7 +77,7 @@ def create_client_app_user(
     return db_user
 
 
-def get_client_app_user(db: Session, user_id: int) -> Optional[ClientAppUser]:
+def get_client_app_user(db: Session, user_id: uuid.UUID) -> Optional[ClientAppUser]:
     """Get a client app user by ID."""
     return db.query(ClientAppUser).filter(ClientAppUser.id == user_id).first()
 
@@ -96,7 +97,7 @@ def get_client_app_user_by_wallet(db: Session, wallet_address: str) -> Optional[
 
 
 def update_client_app_user_verification(
-    db: Session, user_id: int, is_verified: bool
+    db: Session, user_id: uuid.UUID, is_verified: bool
 ) -> Optional[ClientAppUser]:
     """Update client app user verification status."""
     user = get_client_app_user(db, user_id)
@@ -134,13 +135,23 @@ def upsert_client_app_user_from_sdk_event(
         db.commit()
         db.refresh(user)
     else:
-        # Create new user
-        user = create_client_app_user(
-            db=db,
-            email=email or "",
-            hashed_password="",  # No password for SDK-created users
-            name=name,
-            country=country,
-        )
+        # Only create new user if we have a valid email or wallet address
+        if email:
+            user = create_client_app_user(
+                db=db,
+                email=email,
+                hashed_password=None,  # No password for SDK-created users
+                name=name,
+                country=country,
+            )
+        elif wallet_address:
+            user = create_client_app_user(
+                db=db,
+                email=None,
+                hashed_password=None,  # No password for SDK-created users
+                name=name,
+                country=country,
+                wallet_address=wallet_address,
+            )
     
     return user 
