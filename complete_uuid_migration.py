@@ -46,7 +46,38 @@ def complete_uuid_migration():
         logger.info("🚀 COMPLETING UUID MIGRATION")
         logger.info("=" * 50)
         
-        # List of tables to migrate (in dependency order)
+        # Step 1: Drop foreign key constraints first
+        logger.info("📋 STEP 1: Dropping foreign key constraints...")
+        
+        # Drop foreign key constraints
+        try:
+            cursor.execute("ALTER TABLE client_companies DROP CONSTRAINT IF EXISTS client_companies_platform_user_id_fkey")
+            logger.info("✅ Dropped foreign key constraint: client_companies -> platform_users")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not drop foreign key constraint: {e}")
+        
+        try:
+            cursor.execute("ALTER TABLE events DROP CONSTRAINT IF EXISTS events_client_company_id_fkey")
+            logger.info("✅ Dropped foreign key constraint: events -> client_companies")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not drop foreign key constraint: {e}")
+        
+        try:
+            cursor.execute("ALTER TABLE web3_events DROP CONSTRAINT IF EXISTS web3_events_client_company_id_fkey")
+            logger.info("✅ Dropped foreign key constraint: web3_events -> client_companies")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not drop foreign key constraint: {e}")
+        
+        try:
+            cursor.execute("ALTER TABLE platform_metrics DROP CONSTRAINT IF EXISTS platform_metrics_client_company_id_fkey")
+            logger.info("✅ Dropped foreign key constraint: platform_metrics -> client_companies")
+        except Exception as e:
+            logger.warning(f"⚠️  Could not drop foreign key constraint: {e}")
+        
+        conn.commit()
+        
+        # Step 2: Drop primary key constraints
+        logger.info("\n📋 STEP 2: Dropping primary key constraints...")
         tables_to_migrate = [
             'platform_users',      # No dependencies
             'client_companies',    # Depends on platform_users
@@ -56,8 +87,6 @@ def complete_uuid_migration():
             'platform_metrics'     # Depends on client_companies
         ]
         
-        # Step 1: Drop primary key constraints
-        logger.info("📋 STEP 1: Dropping primary key constraints...")
         for table_name in tables_to_migrate:
             try:
                 cursor.execute(f"ALTER TABLE {table_name} DROP CONSTRAINT IF EXISTS {table_name}_pkey")
@@ -67,8 +96,8 @@ def complete_uuid_migration():
         
         conn.commit()
         
-        # Step 2: Drop old integer ID columns and rename UUID columns
-        logger.info("\n📋 STEP 2: Converting ID columns to UUID...")
+        # Step 3: Drop old integer ID columns and rename UUID columns
+        logger.info("\n📋 STEP 3: Converting ID columns to UUID...")
         for table_name in tables_to_migrate:
             try:
                 # Drop the old integer ID column
@@ -87,8 +116,8 @@ def complete_uuid_migration():
                 logger.error(f"❌ Failed to convert ID column in {table_name}: {e}")
                 return False
         
-        # Step 3: Convert foreign key columns
-        logger.info("\n📋 STEP 3: Converting foreign key columns...")
+        # Step 4: Convert foreign key columns
+        logger.info("\n📋 STEP 4: Converting foreign key columns...")
         
         # Convert client_companies.platform_user_id
         try:
@@ -126,8 +155,10 @@ def complete_uuid_migration():
         except Exception as e:
             logger.error(f"❌ Failed to convert platform_metrics.client_company_id: {e}")
         
-        # Step 4: Recreate primary key constraints
-        logger.info("\n📋 STEP 4: Recreating primary key constraints...")
+        conn.commit()
+        
+        # Step 5: Recreate primary key constraints
+        logger.info("\n📋 STEP 5: Recreating primary key constraints...")
         for table_name in tables_to_migrate:
             try:
                 cursor.execute(f"ALTER TABLE {table_name} ADD PRIMARY KEY (id)")
@@ -135,8 +166,8 @@ def complete_uuid_migration():
             except Exception as e:
                 logger.error(f"❌ Failed to add primary key to {table_name}: {e}")
         
-        # Step 5: Recreate foreign key constraints
-        logger.info("\n📋 STEP 5: Recreating foreign key constraints...")
+        # Step 6: Recreate foreign key constraints
+        logger.info("\n📋 STEP 6: Recreating foreign key constraints...")
         
         # client_companies -> platform_users
         try:
