@@ -62,7 +62,7 @@ from .schemas import (
     SDKEventType,
 )
 
-# --- 4. Database Operations (CRUD from crud.py) ---
+# --- 4. Database Operations (CRUD from crud module) ---
 # These are the "recipes" for performing specific actions (Create, Read, Update, Delete)
 # on your database models.
 from .crud import (
@@ -103,17 +103,17 @@ from .crud import (
     # CRUD operations for PlatformMetrics
     create_platform_metric,             # Create a new platform metric record.
     get_metrics_by_timeframe_for_companies, # Get platform metrics for a specific time range for multiple companies.
-    calculate_growth_rate               # Calculate growth rate based on metrics.
+    calculate_growth_rate,              # Calculate growth rate based on metrics.
+    
+    # CRUD operations for Region Analytics
+    get_region_analytics,               # Get region-based analytics.
+    get_user_locations,                 # Get user location data.
 )
-# app/__init__.py
 
 from dotenv import load_dotenv
 
 # This must be the very first thing that happens
 load_dotenv()
-
-from .database import Base, engine, SessionLocal, get_db
-from . import crud, models, schemas
 
 # --- 5. The '__all__' List: What's Publicly Exported ---
 # This special Python list defines what names are exposed when someone does
@@ -187,4 +187,8 @@ __all__ = [
     'create_platform_metric',
     'get_metrics_by_timeframe_for_companies',
     'calculate_growth_rate',
+    
+    # CRUD operations for Region Analytics
+    'get_region_analytics',
+    'get_user_locations',
 ]
