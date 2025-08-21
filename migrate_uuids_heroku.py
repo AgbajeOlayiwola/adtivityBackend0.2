@@ -82,6 +82,63 @@ def add_uuid_columns(conn, table_name, id_column="id"):
         conn.rollback()
         return False
 
+def add_foreign_key_uuid_columns(conn):
+    """Add UUID foreign key columns to tables that need them."""
+    cursor = conn.cursor()
+    
+    try:
+        # Add platform_user_id_uuid to client_companies
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'client_companies' AND column_name = 'platform_user_id_uuid'
+        """)
+        
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE client_companies ADD COLUMN platform_user_id_uuid UUID")
+            logger.info("✅ Added platform_user_id_uuid to client_companies")
+        
+        # Add client_company_id_uuid to events
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'events' AND column_name = 'client_company_id_uuid'
+        """)
+        
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE events ADD COLUMN client_company_id_uuid UUID")
+            logger.info("✅ Added client_company_id_uuid to events")
+        
+        # Add client_company_id_uuid to web3_events
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'web3_events' AND column_name = 'client_company_id_uuid'
+        """)
+        
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE web3_events ADD COLUMN client_company_id_uuid UUID")
+            logger.info("✅ Added client_company_id_uuid to web3_events")
+        
+        # Add client_company_id_uuid to platform_metrics
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'platform_metrics' AND column_name = 'client_company_id_uuid'
+        """)
+        
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE platform_metrics ADD COLUMN client_company_id_uuid UUID")
+            logger.info("✅ Added client_company_id_uuid to platform_metrics")
+        
+        conn.commit()
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to add foreign key UUID columns: {e}")
+        conn.rollback()
+        return False
+
 def migrate_to_uuids():
     """Main migration function to convert all tables to UUIDs."""
     conn = get_db_connection()
@@ -136,8 +193,16 @@ def migrate_to_uuids():
                     logger.error(f"❌ {table_name}: Failed to add UUID column")
                     return False
         
-        # Step 3: Update foreign key references
-        logger.info("\n📋 STEP 3: Updating foreign key references...")
+        # Step 3: Add foreign key UUID columns
+        logger.info("\n📋 STEP 3: Adding foreign key UUID columns...")
+        if add_foreign_key_uuid_columns(conn):
+            logger.info("✅ Foreign key UUID columns added successfully")
+        else:
+            logger.error("❌ Failed to add foreign key UUID columns")
+            return False
+        
+        # Step 4: Update foreign key references
+        logger.info("\n📋 STEP 4: Updating foreign key references...")
         
         # Update client_companies.platform_user_id
         if 'client_companies' in backup_tables:
