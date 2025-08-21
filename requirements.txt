@@ -32,3 +32,6 @@ passlib==1.7.4
 httpx==0.28.1
 python-multipart==0.0.20
 email-validator==2.0.0
+
+#HTTP requests for IP geolocation
+requests==2.31.0

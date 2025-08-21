@@ -263,6 +263,12 @@ class SDKEventPayload(BaseModel):
     transaction_hash: Optional[str] = None
     contract_address: Optional[str] = None
 
+    # Region tracking fields
+    country: Optional[str] = Field(None, description="ISO 3166-1 alpha-2 country code (e.g., 'US', 'CA')", example="US", max_length=2)
+    region: Optional[str] = Field(None, description="State/province/region name", example="California", max_length=100)
+    city: Optional[str] = Field(None, description="City name", example="San Francisco", max_length=100)
+    ip_address: Optional[str] = Field(None, description="IPv4 or IPv6 address", example="192.168.1.1", max_length=45)
+
     @validator('type', pre=True, always=True)
     def ensure_valid_event_type(cls, v):
         """
@@ -272,6 +278,62 @@ class SDKEventPayload(BaseModel):
         if v and v.upper() in SDKEventType.__members__:
             return SDKEventType[v.upper()]
         return SDKEventType.TRACK
+    
+    @validator('country', pre=True)
+    def validate_country(cls, v):
+        """Validate and clean country field."""
+        if v is None:
+            return None
+        
+        # Convert to string and strip whitespace
+        v_str = str(v).strip()
+        
+        # Handle common Swagger UI defaults and invalid values
+        if v_str.lower() in ['string', 'example', 'test', 'none', 'null', 'undefined', '']:
+            return None
+        
+        # Check length constraint
+        if len(v_str) > 2:
+            return None  # Reset invalid values to None
+        
+        # Convert to uppercase for consistency
+        return v_str.upper() if v_str else None
+    
+    @validator('region', 'city')
+    def validate_region_city(cls, v):
+        """Validate and clean region and city fields."""
+        if v is None:
+            return None
+        
+        # Convert to string and strip whitespace
+        v_str = str(v).strip()
+        
+        # Handle common Swagger UI defaults and invalid values
+        if v_str.lower() in ['string', 'example', 'test', 'none', 'null', 'undefined', '']:
+            return None
+        
+        # Check length constraint
+        if len(v_str) > 100:
+            return None  # Reset invalid values to None
+        
+        # Return cleaned string or None
+        return v_str if v_str else None
+    
+    @validator('chain_id', 'contract_address', pre=True)
+    def validate_optional_string_fields(cls, v):
+        """Validate and clean optional string fields."""
+        if v is None:
+            return None
+        
+        # Convert to string and strip whitespace
+        v_str = str(v).strip()
+        
+        # Handle common Swagger UI defaults and invalid values
+        if v_str.lower() in ['string', 'example', 'test', 'none', 'null', 'undefined', '']:
+            return None
+        
+        # Return cleaned string or None
+        return v_str if v_str else None
 
 
 # ====================================================================================
@@ -305,6 +367,67 @@ class MetricsCreate(BaseModel):
     source: Optional[str] = None
     chain_id: Optional[str] = None
     contract_address: Optional[str] = None
+    
+    # Region tracking fields
+    country: Optional[str] = Field(None, description="ISO 3166-1 alpha-2 country code (e.g., 'US', 'CA')", example="US", max_length=2)
+    region: Optional[str] = Field(None, description="State/province/region name", example="California", max_length=100)
+    city: Optional[str] = Field(None, description="City name", example="San Francisco", max_length=100)
+    
+    @validator('country', pre=True)
+    def validate_country(cls, v):
+        """Validate and clean country field."""
+        if v is None:
+            return None
+        
+        # Convert to string and strip whitespace
+        v_str = str(v).strip()
+        
+        # Handle common Swagger UI defaults and invalid values
+        if v_str.lower() in ['string', 'example', 'test', 'none', 'null', 'undefined', '']:
+            return None
+        
+        # Check length constraint
+        if len(v_str) > 2:
+            return None  # Reset invalid values to None
+        
+        # Convert to uppercase for consistency
+        return v_str.upper() if v_str else None
+    
+    @validator('region', 'city', pre=True)
+    def validate_region_city(cls, v):
+        """Validate and clean region and city fields."""
+        if v is None:
+            return None
+        
+        # Convert to string and strip whitespace
+        v_str = str(v).strip()
+        
+        # Handle common Swagger UI defaults and invalid values
+        if v_str.lower() in ['string', 'example', 'test', 'none', 'null', 'undefined', '']:
+            return None
+        
+        # Check length constraint
+        if len(v_str) > 100:
+            return None  # Reset invalid values to None
+        
+        # Return cleaned string or None
+        return v_str if v_str else None
+    
+    @validator('source', pre=True)
+    def validate_source(cls, v):
+        """Validate and clean source field."""
+        if v is None:
+            return None
+        
+        # Convert to string and strip whitespace
+        v_str = str(v).strip()
+        
+        # Handle common Swagger UI defaults and invalid values
+        if v_str.lower() in ['string', 'example', 'test', 'none', 'null', 'undefined', '']:
+            return None
+        
+        # Return cleaned string or None
+        return v_str if v_str else None
 
 class PlatformMetrics(MetricsCreate):
     """
@@ -334,3 +457,40 @@ class MetricsResponse(BaseModel):
         None,
         description="Optional dictionary of time-series data, where keys are metric names."
     )
+
+
+# ====================================================================================
+# --- Region Analytics Schemas: Models for location-based analytics. ---
+# ====================================================================================
+class RegionData(BaseModel):
+    """
+    A model representing geographic data for analytics.
+    """
+    country: str = Field(..., description="ISO 3166-1 alpha-2 country code")
+    region: Optional[str] = Field(None, description="State/province/region name")
+    city: Optional[str] = Field(None, description="City name")
+    user_count: int = Field(..., description="Number of users from this region")
+    event_count: int = Field(..., description="Number of events from this region")
+    conversion_rate: Optional[float] = Field(None, description="Conversion rate for this region")
+    revenue_usd: Optional[float] = Field(None, description="Revenue from this region")
+
+class RegionAnalyticsResponse(BaseModel):
+    """
+    Response schema for region-based analytics.
+    """
+    regions: List[RegionData] = Field(..., description="List of regions with their metrics")
+    total_users: int = Field(..., description="Total users across all regions")
+    total_events: int = Field(..., description="Total events across all regions")
+    top_countries: List[str] = Field(..., description="Top 5 countries by user count")
+    top_cities: List[str] = Field(..., description="Top 5 cities by user count")
+
+class UserLocationData(BaseModel):
+    """
+    Schema for user location information.
+    """
+    user_id: str = Field(..., description="User identifier")
+    country: Optional[str] = Field(None, description="ISO 3166-1 alpha-2 country code")
+    region: Optional[str] = Field(None, description="State/province/region name")
+    city: Optional[str] = Field(None, description="City name")
+    ip_address: Optional[str] = Field(None, description="User's IP address")
+    last_seen: datetime = Field(..., description="Last time user was active")

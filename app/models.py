@@ -99,6 +99,12 @@ class Event(Base):
     properties = Column(JSON, default={})
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
     
+    # Region tracking fields
+    country = Column(String(2), index=True)  # ISO 3166-1 alpha-2 country code
+    region = Column(String(100), index=True)  # State/province/region
+    city = Column(String(100), index=True)   # City name
+    ip_address = Column(String(45), index=True)  # IPv4 or IPv6 address
+    
     # A foreign key to link the event to the company that sent it.
     client_company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False)
 
@@ -123,6 +129,12 @@ class Web3Event(Base):
     contract_address = Column(String, nullable=True, index=True)
     properties = Column(JSON, default={})
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Region tracking fields
+    country = Column(String(2), index=True)  # ISO 3166-1 alpha-2 country code
+    region = Column(String(100), index=True)  # State/province/region
+    city = Column(String(100), index=True)   # City name
+    ip_address = Column(String(45), index=True)  # IPv4 or IPv6 address
 
     # A foreign key to link the Web3 event to the company that sent it.
     client_company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False)
@@ -162,6 +174,11 @@ class PlatformMetrics(Base):
     source = Column(String)
     chain_id = Column(String) # FIX: Changed from Integer to String to support chain IDs like '0x1'
     contract_address = Column(String)
+    
+    # Region tracking dimensions
+    country = Column(String(2), index=True)  # ISO 3166-1 alpha-2 country code
+    region = Column(String(100), index=True)  # State/province/region
+    city = Column(String(100), index=True)   # City name
     
     # A foreign key to link metrics to a specific client company
     client_company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False)

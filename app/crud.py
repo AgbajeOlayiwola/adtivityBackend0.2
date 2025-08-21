@@ -1,7 +1,7 @@
 import logging
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -165,7 +165,7 @@ def upsert_client_app_user_from_sdk_event(
             country=properties.get("country"),
             wallet_address=user_wallet_address,
             wallet_type=properties.get("wallet_type"),
-            last_login=timestamp or datetime.utcnow()
+            last_login=timestamp or datetime.now(timezone.utc)
         )
         db.add(new_user)
         db.commit()
@@ -176,7 +176,7 @@ def upsert_client_app_user_from_sdk_event(
             if hasattr(existing_user, key):
                 setattr(existing_user, key, value)
         
-        existing_user.last_login = timestamp or datetime.utcnow()
+        existing_user.last_login = timestamp or datetime.now(timezone.utc)
         db.commit()
         db.refresh(existing_user)
         return existing_user
@@ -328,7 +328,7 @@ def create_event(
         anonymous_id=anonymous_id,
         session_id=session_id,
         properties=properties,
-        timestamp=timestamp or datetime.utcnow(),
+        timestamp=timestamp or datetime.now(timezone.utc),
     )
     db.add(db_event)
     db.commit()
@@ -381,7 +381,7 @@ def create_web3_event(
         wallet_address=wallet_address,
         chain_id=chain_id,
         properties=properties,
-        timestamp=timestamp or datetime.utcnow(),
+        timestamp=timestamp or datetime.now(timezone.utc),
     )
     db.add(db_web3_event)
     db.commit()
@@ -397,12 +397,12 @@ def get_web3_events_for_client_company(db: Session, client_company_id: uuid.UUID
 def _parse_timestamp(timestamp_str: Optional[str]) -> datetime:
     """Helper function to safely parse a timestamp string."""
     if not timestamp_str:
-        return datetime.utcnow()
+        return datetime.now(timezone.utc)
     try:
         return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
     except (ValueError, TypeError) as e:
         logger.warning(f"Timestamp parsing error: {e}. Using current UTC time.")
-        return datetime.utcnow()
+        return datetime.now(timezone.utc)
 
 
 def handle_sdk_event(
@@ -545,12 +545,16 @@ def create_platform_metric(
     source: Optional[str] = None,
     chain_id: Optional[str] = None,
     contract_address: Optional[str] = None,
+    # New region tracking fields
+    country: Optional[str] = None,
+    region: Optional[str] = None,
+    city: Optional[str] = None,
 ) -> PlatformMetrics:
     """
     Creates a new platform metrics record in the database, now associated with a client company.
     """
     metric = PlatformMetrics(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         client_company_id=client_company_id,
         total_users=total_users,
         active_sessions=active_sessions,
@@ -566,6 +570,10 @@ def create_platform_metric(
         source=source,
         chain_id=chain_id,
         contract_address=contract_address,
+        # New region tracking fields
+        country=country,
+        region=region,
+        city=city,
     )
     db.add(metric)
     db.commit()
@@ -604,7 +612,7 @@ def calculate_growth_rate(db: Session, days: int = 30) -> float:
     """
     Calculates the percentage growth of total users over a specified number of days.
     """
-    end = datetime.utcnow()
+    end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
     
     start_metrics = db.query(func.sum(PlatformMetrics.total_users)).filter(
@@ -645,3 +653,212 @@ def get_all_events_for_user(db: Session, platform_user_id: uuid.UUID):
     return db.query(Event).filter(
         Event.client_company_id.in_(company_ids)
     ).all()
+
+# ----------- Region Analytics Operations -----------
+def get_region_analytics(
+    db: Session,
+    company_ids: List[uuid.UUID],
+    start: datetime,
+    end: datetime,
+    platform: str = "both"
+) -> Dict[str, Any]:
+    """
+    Get region-based analytics for specified companies and time period.
+    """
+    # Base query for events
+    events_query = db.query(
+        Event.country,
+        Event.region,
+        Event.city,
+        func.count(Event.id).label('event_count'),
+        func.count(func.distinct(Event.user_id)).label('unique_users')
+    ).filter(
+        Event.client_company_id.in_(company_ids),
+        Event.timestamp >= start,
+        Event.timestamp <= end
+    )
+    
+    # Base query for Web3 events
+    web3_query = db.query(
+        Web3Event.country,
+        Web3Event.region,
+        Web3Event.city,
+        func.count(Web3Event.id).label('event_count'),
+        func.count(func.distinct(Web3Event.user_id)).label('unique_users')
+    ).filter(
+        Web3Event.client_company_id.in_(company_ids),
+        Web3Event.timestamp >= start,
+        Web3Event.timestamp <= end
+    )
+    
+    # Apply platform filter
+    if platform == "web2":
+        web3_query = web3_query.filter(False)  # No Web3 events
+    elif platform == "web3":
+        events_query = events_query.filter(False)  # No Web2 events
+    
+    # Combine and aggregate results
+    all_regions = []
+    
+    # Process Web2 events
+    for result in events_query.group_by(Event.country, Event.region, Event.city).all():
+        if result.country and result.country != "Unknown":
+            all_regions.append({
+                'country': result.country,
+                'region': result.region or "Unknown",
+                'city': result.city or "Unknown",
+                'event_count': result.event_count,
+                'user_count': result.unique_users
+            })
+    
+    # Process Web3 events
+    for result in web3_query.group_by(Web3Event.country, Web3Event.region, Web3Event.city).all():
+        if result.country and result.country != "Unknown":
+            all_regions.append({
+                'country': result.country,
+                'region': result.region or "Unknown",
+                'city': result.city or "Unknown",
+                'event_count': result.event_count,
+                'user_count': result.unique_users
+            })
+    
+    # Aggregate by region
+    region_data = {}
+    for region in all_regions:
+        key = f"{region['country']}_{region['region']}_{region['city']}"
+        if key not in region_data:
+            region_data[key] = {
+                'country': region['country'],
+                'region': region['region'],
+                'city': region['city'],
+                'event_count': 0,
+                'user_count': 0
+            }
+        region_data[key]['event_count'] += region['event_count']
+        region_data[key]['user_count'] += region['user_count']
+    
+    # Convert to list and sort by user count
+    regions = list(region_data.values())
+    regions.sort(key=lambda x: x['user_count'], reverse=True)
+    
+    # Calculate totals
+    total_users = sum(r['user_count'] for r in regions)
+    total_events = sum(r['event_count'] for r in regions)
+    
+    # Get top countries and cities
+    country_counts = {}
+    city_counts = {}
+    for region in regions:
+        country_counts[region['country']] = country_counts.get(region['country'], 0) + region['user_count']
+        city_counts[f"{region['city']}, {region['country']}"] = city_counts.get(f"{region['city']}, {region['country']}", 0) + region['user_count']
+    
+    top_countries = sorted(country_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    top_cities = sorted(city_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    # Convert to response format
+    region_objects = []
+    for region in regions:
+        region_objects.append({
+            'country': region['country'],
+            'region': region['region'],
+            'city': region['city'],
+            'user_count': region['user_count'],
+            'event_count': region['event_count'],
+            'conversion_rate': None,  # Could be calculated from other metrics
+            'revenue_usd': None       # Could be calculated from other metrics
+        })
+    
+    return {
+        'regions': region_objects,
+        'total_users': total_users,
+        'total_events': total_events,
+        'top_countries': [country[0] for country in top_countries],
+        'top_cities': [city[0] for city in top_cities]
+    }
+
+
+def get_user_locations(
+    db: Session,
+    company_ids: List[uuid.UUID],
+    country: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Get location data for users across specified companies.
+    """
+    # Query for user locations from events
+    events_query = db.query(
+        Event.user_id,
+        Event.country,
+        Event.region,
+        Event.city,
+        Event.ip_address,
+        func.max(Event.timestamp).label('last_seen')
+    ).filter(
+        Event.client_company_id.in_(company_ids),
+        Event.user_id.isnot(None)
+    )
+    
+    # Query for user locations from Web3 events
+    web3_query = db.query(
+        Web3Event.user_id,
+        Web3Event.country,
+        Web3Event.region,
+        Web3Event.city,
+        Web3Event.ip_address,
+        func.max(Web3Event.timestamp).label('last_seen')
+    ).filter(
+        Web3Event.client_company_id.in_(company_ids)
+    )
+    
+    # Apply country filter if specified
+    if country:
+        events_query = events_query.filter(Event.country == country)
+        web3_query = web3_query.filter(Web3Event.country == country)
+    
+    # Get results
+    events_results = events_query.group_by(
+        Event.user_id, Event.country, Event.region, Event.city, Event.ip_address
+    ).all()
+    
+    web3_results = web3_query.group_by(
+        Web3Event.user_id, Web3Event.country, Web3Event.region, Web3Event.city, Web3Event.ip_address
+    ).all()
+    
+    # Combine and deduplicate results
+    user_locations = {}
+    
+    for result in events_results:
+        if result.user_id:
+            user_locations[result.user_id] = {
+                'user_id': result.user_id,
+                'country': result.country,
+                'region': result.region,
+                'city': result.city,
+                'ip_address': result.ip_address,
+                'last_seen': result.last_seen
+            }
+    
+    for result in web3_results:
+        if result.user_id:
+            # Update existing user or add new one
+            if result.user_id in user_locations:
+                # Keep the most recent location data
+                if result.last_seen > user_locations[result.user_id]['last_seen']:
+                    user_locations[result.user_id].update({
+                        'country': result.country,
+                        'region': result.region,
+                        'city': result.city,
+                        'ip_address': result.ip_address,
+                        'last_seen': result.last_seen
+                    })
+            else:
+                user_locations[result.user_id] = {
+                    'user_id': result.user_id,
+                    'country': result.country,
+                    'region': result.region,
+                    'city': result.city,
+                    'ip_address': result.ip_address,
+                    'last_seen': result.last_seen
+                }
+    
+    return list(user_locations.values())

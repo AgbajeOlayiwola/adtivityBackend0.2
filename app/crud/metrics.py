@@ -1,7 +1,7 @@
 """Metrics-related CRUD operations."""
 
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -27,6 +27,10 @@ def create_platform_metric(
     chain_id: Optional[str] = None,
     contract_address: Optional[str] = None,
     timestamp: Optional[datetime] = None,
+    # New region tracking fields
+    country: Optional[str] = None,
+    region: Optional[str] = None,
+    city: Optional[str] = None,
 ) -> PlatformMetrics:
     """Create a new platform metric."""
     db_metric = PlatformMetrics(
@@ -45,7 +49,11 @@ def create_platform_metric(
         source=source,
         chain_id=chain_id,
         contract_address=contract_address,
-        timestamp=timestamp or datetime.utcnow(),
+        timestamp=timestamp or datetime.now(timezone.utc),
+        # New region tracking fields
+        country=country,
+        region=region,
+        city=city,
     )
     db.add(db_metric)
     db.commit()

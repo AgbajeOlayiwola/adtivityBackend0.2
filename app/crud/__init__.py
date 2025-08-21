@@ -35,7 +35,10 @@ from .metrics import (
     get_metrics_by_timeframe_for_companies,
     calculate_growth_rate
 )
-
+from .regions import (
+    get_region_analytics,
+    get_user_locations
+)
 
 
 __all__ = [
@@ -77,5 +80,7 @@ __all__ = [
     "get_metrics_by_timeframe_for_companies",
     "calculate_growth_rate",
     
-
+    # Region Analytics
+    "get_region_analytics",
+    "get_user_locations",
 ] 
