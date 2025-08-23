@@ -89,7 +89,7 @@ async def get_company_region_analytics(
 ) -> schemas.RegionAnalyticsResponse:
     """Get region-based analytics for a specific company."""
     # Verify user owns this company
-    company = crud.get_client_company(db, company_id)
+    company = crud.get_client_company_by_id(db, company_id)
     if not company or company.platform_user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Company not found")
     
