@@ -154,4 +154,99 @@ def upsert_client_app_user_from_sdk_event(
                 wallet_address=wallet_address,
             )
     
-    return user 
+    return user
+
+
+def get_user_by_wallet_address(db: Session, wallet_address: str) -> Optional[ClientAppUser]:
+    """Get a user by wallet address (alias for get_client_app_user_by_wallet)."""
+    return get_client_app_user_by_wallet(db, wallet_address)
+
+
+def get_user_by_email(db: Session, email: str) -> Optional[ClientAppUser]:
+    """Get a user by email (alias for get_client_app_user_by_email)."""
+    return get_client_app_user_by_email(db, email)
+
+
+def update_user_wallet_info(db: Session, user_id: uuid.UUID, wallet_data: dict) -> Optional[ClientAppUser]:
+    """Update user wallet information."""
+    user = get_client_app_user(db, user_id)
+    if not user:
+        return None
+    
+    # Update wallet-related fields
+    if 'wallet_address' in wallet_data:
+        user.wallet_address = wallet_data['wallet_address']
+    if 'wallet_type' in wallet_data:
+        user.wallet_type = wallet_data['wallet_type']
+    if 'country' in wallet_data:
+        user.country = wallet_data['country']
+    if 'region' in wallet_data:
+        user.region = wallet_data['region']
+    if 'city' in wallet_data:
+        user.city = wallet_data['city']
+    
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def update_user_info(db: Session, user_id: uuid.UUID, user_data: dict) -> Optional[ClientAppUser]:
+    """Update user information."""
+    user = get_client_app_user(db, user_id)
+    if not user:
+        return None
+    
+    # Update user fields
+    if 'name' in user_data:
+        user.name = user_data['name']
+    if 'phone_number' in user_data:
+        user.phone_number = user_data['phone_number']
+    if 'country' in user_data:
+        user.country = user_data['country']
+    if 'region' in user_data:
+        user.region = user_data['region']
+    if 'city' in user_data:
+        user.city = user_data['city']
+    if 'subscription_plan' in user_data:
+        user.subscription_plan = user_data['subscription_plan']
+    
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def create_wallet_user(db: Session, wallet_data: dict) -> ClientAppUser:
+    """Create a new wallet user entry."""
+    db_user = ClientAppUser(
+        wallet_address=wallet_data['wallet_address'],
+        wallet_type=wallet_data.get('wallet_type'),
+        country=wallet_data.get('country'),
+        region=wallet_data.get('region'),
+        city=wallet_data.get('city'),
+        company_id=wallet_data.get('company_id'),
+        platform_user_id=wallet_data.get('platform_user_id'),
+        user_id=wallet_data.get('user_id'),
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
+def create_user(db: Session, user_data: dict) -> ClientAppUser:
+    """Create a new user entry."""
+    db_user = ClientAppUser(
+        email=user_data['email'],
+        name=user_data.get('name'),
+        phone_number=user_data.get('phone_number'),
+        country=user_data.get('country'),
+        region=user_data.get('region'),
+        city=user_data.get('city'),
+        subscription_plan=user_data.get('subscription_plan'),
+        company_id=user_data.get('company_id'),
+        platform_user_id=user_data.get('platform_user_id'),
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user 
