@@ -7,8 +7,7 @@ gunicorn==23.0.0
 
 #Database
 sqlalchemy==2.0.25
-# Note: For production PostgreSQL, install psycopg2-binary separately
-# pip install psycopg2-binary
+psycopg2-binary==2.9.9
 
 #Cache
 redis==6.4.0
