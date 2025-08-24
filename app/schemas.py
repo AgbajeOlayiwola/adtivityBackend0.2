@@ -494,3 +494,32 @@ class UserLocationData(BaseModel):
     city: Optional[str] = Field(None, description="City name")
     ip_address: Optional[str] = Field(None, description="User's IP address")
     last_seen: datetime = Field(..., description="Last time user was active")
+
+
+# ====================================================================================
+# --- Import Schemas: Models for CSV import functionality. ---
+# ====================================================================================
+class ImportResult(BaseModel):
+    """
+    Response schema for CSV import operations.
+    """
+    success: bool = Field(..., description="Whether the import was successful")
+    imported_count: int = Field(..., description="Number of new records imported")
+    updated_count: int = Field(..., description="Number of existing records updated")
+    total_rows: int = Field(..., description="Total number of rows in the CSV")
+    errors: List[str] = Field(default=[], description="List of error messages for failed rows")
+
+class ImportTemplate(BaseModel):
+    """
+    Schema for CSV import template information.
+    """
+    description: str = Field(..., description="Description of what this template is for")
+    columns: Dict[str, str] = Field(..., description="Column names and their descriptions")
+    example_row: Dict[str, str] = Field(..., description="Example data row")
+
+class ImportTemplates(BaseModel):
+    """
+    Response schema containing all available import templates.
+    """
+    wallet_template: ImportTemplate = Field(..., description="Template for wallet imports")
+    user_template: ImportTemplate = Field(..., description="Template for user imports")

@@ -60,6 +60,7 @@ class ClientCompany(Base):
     # NEW: Relationships to link this company to its Web2 and Web3 events.
     events = relationship("Event", back_populates="client_company")
     web3_events = relationship("Web3Event", back_populates="client_company")
+    app_users = relationship("ClientAppUser", back_populates="company")
 
 
 class ClientAppUser(Base):
@@ -74,13 +75,25 @@ class ClientAppUser(Base):
     hashed_password = Column(String)
     name = Column(String)
     country = Column(String(2))
+    region = Column(String(100))  # State/province/region
+    city = Column(String(100))    # City name
     wallet_address = Column(String, index=True, unique=True)
     wallet_type = Column(String)
     is_verified = Column(Boolean, default=False)
     subscription_plan = Column(String, default="free")
     billing_id = Column(String)
+    
+    # Foreign key relationships
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=True)
+    platform_user_id = Column(UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=True)
+    user_id = Column(String, nullable=True)  # For linking to external user IDs
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login = Column(DateTime(timezone=True))
+    
+    # Relationships
+    company = relationship("ClientCompany", back_populates="app_users")
+    platform_user = relationship("PlatformUser")
 
 
 class Event(Base):

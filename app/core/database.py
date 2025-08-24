@@ -5,17 +5,50 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
+import os
 
 from .config import settings
 
 # Database engine configuration
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,  # Verify connections before use
-    pool_recycle=300,    # Recycle connections every 5 minutes
-    echo=settings.DEBUG, # Log SQL queries in debug mode
-    poolclass=StaticPool if settings.DATABASE_URL.startswith("sqlite") else None
-)
+# Handle different database types
+if settings.DATABASE_URL.startswith("sqlite"):
+    # SQLite configuration
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        echo=settings.DEBUG,
+        poolclass=StaticPool
+    )
+elif settings.DATABASE_URL.startswith("postgresql"):
+    # PostgreSQL configuration - use psycopg2 if available, otherwise fallback
+    try:
+        import psycopg2
+        # Use standard PostgreSQL URL
+        engine = create_engine(
+            settings.DATABASE_URL,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            echo=settings.DEBUG
+        )
+    except ImportError:
+        # Fallback to SQLite for development
+        print("⚠️  psycopg2 not available, using SQLite fallback")
+        engine = create_engine(
+            "sqlite:///./ad-platform.db",
+            pool_pre_ping=True,
+            pool_recycle=300,
+            echo=settings.DEBUG,
+            poolclass=StaticPool
+        )
+else:
+    # Default configuration
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_pre_ping=True,
+        pool_recycle=300,
+        echo=settings.DEBUG
+    )
 
 # Session factory
 SessionLocal = sessionmaker(

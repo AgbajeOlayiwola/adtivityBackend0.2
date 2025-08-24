@@ -140,7 +140,7 @@ def fix_uuid_migration():
                 WHERE web3_events.client_company_id = client_companies.id
             """)
             logger.info("✅ Updated web3_events.client_company_id references")
-        except Exception as e:
+    except Exception as e:
             logger.error(f"❌ Failed to update web3_events references: {e}")
         
         # Update platform_metrics.client_company_id
@@ -164,11 +164,11 @@ def fix_uuid_migration():
     except Exception as e:
         logger.error(f"❌ Fix failed: {e}")
         if conn:
-            conn.rollback()
+        conn.rollback()
         return False
     finally:
         if conn:
-            conn.close()
+        conn.close()
 
 if __name__ == "__main__":
     logger.info("Starting UUID migration fix...")

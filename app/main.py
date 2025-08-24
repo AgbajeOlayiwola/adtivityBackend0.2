@@ -11,7 +11,8 @@ from .api import (
     dashboard_router,
     sdk_router,
     analytics_router,
-    system_router
+    system_router,
+    imports_router
 )
 
 
@@ -49,6 +50,7 @@ app.include_router(dashboard_router)
 app.include_router(sdk_router)
 app.include_router(analytics_router)
 app.include_router(system_router)
+app.include_router(imports_router)
 
 
 @app.get("/", tags=["Root"])
