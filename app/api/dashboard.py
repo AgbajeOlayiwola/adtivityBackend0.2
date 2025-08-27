@@ -182,3 +182,54 @@ async def get_all_events(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving events: {str(e)}"
         ) 
+
+@router.get("/debug/db-status")
+async def debug_database_status(db: Session = Depends(get_db)):
+    """Debug endpoint to check database connectivity and data."""
+    try:
+        # Check basic connectivity
+        platform_users_count = db.query(models.PlatformUser).count()
+        client_companies_count = db.query(models.ClientCompany).count()
+        events_count = db.query(models.Event).count()
+        web3_events_count = db.query(models.Web3Event).count()
+        
+        return {
+            "status": "success",
+            "database": "connected",
+            "counts": {
+                "platform_users": platform_users_count,
+                "client_companies": client_companies_count,
+                "events": events_count,
+                "web3_events": web3_events_count
+            },
+            "sample_data": {
+                "platform_users": [
+                    {"id": str(u.id), "email": u.email} 
+                    for u in db.query(models.PlatformUser).limit(3).all()
+                ],
+                "client_companies": [
+                    {"id": str(c.id), "name": c.name, "owner": str(c.platform_user_id)} 
+                    for c in db.query(models.ClientCompany).limit(3).all()
+                ]
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "database": "disconnected"
+        } 
+
+@router.get("/debug/current-user")
+async def debug_current_user(
+    current_user: models.PlatformUser = Depends(get_current_platform_user)
+):
+    """Debug endpoint to check the current authenticated user."""
+    return {
+        "user_id": str(current_user.id),
+        "email": current_user.email,
+        "name": current_user.name,
+        "is_active": current_user.is_active,
+        "is_admin": current_user.is_admin,
+        "created_at": current_user.created_at.isoformat() if current_user.created_at else None
+    } 

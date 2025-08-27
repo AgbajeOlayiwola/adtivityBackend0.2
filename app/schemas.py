@@ -495,31 +495,32 @@ class UserLocationData(BaseModel):
     ip_address: Optional[str] = Field(None, description="User's IP address")
     last_seen: datetime = Field(..., description="Last time user was active")
 
-
 # ====================================================================================
-# --- Import Schemas: Models for CSV import functionality. ---
+# --- CSV Import Schemas: Models for importing wallet and user data. ---
 # ====================================================================================
 class ImportResult(BaseModel):
     """
     Response schema for CSV import operations.
     """
     success: bool = Field(..., description="Whether the import was successful")
-    imported_count: int = Field(..., description="Number of new records imported")
+    imported_count: int = Field(..., description="Number of records successfully imported")
     updated_count: int = Field(..., description="Number of existing records updated")
-    total_rows: int = Field(..., description="Total number of rows in the CSV")
+    total_rows: int = Field(..., description="Total number of rows processed")
     errors: List[str] = Field(default=[], description="List of error messages for failed rows")
 
 class ImportTemplate(BaseModel):
     """
-    Schema for CSV import template information.
+    Schema for CSV import template structure.
     """
-    description: str = Field(..., description="Description of what this template is for")
-    columns: Dict[str, str] = Field(..., description="Column names and their descriptions")
-    example_row: Dict[str, str] = Field(..., description="Example data row")
+    name: str = Field(..., description="Template name")
+    description: str = Field(..., description="Template description")
+    columns: List[str] = Field(..., description="Required column names")
+    optional_columns: List[str] = Field(default=[], description="Optional column names")
+    example_data: List[Dict[str, str]] = Field(..., description="Example data rows")
 
 class ImportTemplates(BaseModel):
     """
     Response schema containing all available import templates.
     """
-    wallet_template: ImportTemplate = Field(..., description="Template for wallet imports")
-    user_template: ImportTemplate = Field(..., description="Template for user imports")
+    templates: List[ImportTemplate] = Field(..., description="Available import templates")
+    instructions: str = Field(..., description="General import instructions")
