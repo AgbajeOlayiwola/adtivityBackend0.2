@@ -92,11 +92,13 @@ def get_web3_events_for_client_company(
 
 def handle_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventPayload) -> Event:
     """Handle a standard SDK event."""
-    # Extract event data from payload
-    event_name = payload.eventName or payload.type or "unknown"
-    event_type = payload.type or "track"
-    
-    # Create or update user if we have identifying information
+    # Normalize type to uppercase
+    event_type = (payload.type or "TRACK").upper()
+
+    # Always require an event name
+    event_name = payload.eventName or f"{event_type}_EVENT"
+
+    # Default: try to tie to a user if info exists
     user_id = None
     if payload.user_id or payload.wallet_address:
         from .users import upsert_client_app_user_from_sdk_event
@@ -109,7 +111,7 @@ def handle_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventPayloa
         )
         if user:
             user_id = str(user.id)
-    
+
     # Create the event
     return create_event(
         db=db,
@@ -120,7 +122,7 @@ def handle_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventPayloa
         anonymous_id=payload.anonymous_id,
         session_id=payload.session_id,
         properties=payload.properties or {},
-        timestamp=payload.timestamp
+        timestamp=payload.timestamp or datetime.now(timezone.utc)
     )
 
 
