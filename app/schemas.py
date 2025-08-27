@@ -38,6 +38,15 @@ class SDKEventType(str, Enum):
     GROUP = "group"
     ALIAS = "alias"
     TX = "tx"
+    
+    # Add uppercase variants for backward compatibility
+    TRACK_UPPER = "TRACK"
+    PAGE_UPPER = "PAGE"
+    SCREEN_UPPER = "SCREEN"
+    IDENTIFY_UPPER = "IDENTIFY"
+    GROUP_UPPER = "GROUP"
+    ALIAS_UPPER = "ALIAS"
+    TX_UPPER = "TX"
 
 # ====================================================================================
 # --- Common Schemas: Reusable data models for shared components. ---
@@ -215,6 +224,15 @@ class Event(EventBase):
     id: uuid.UUID
     client_company_id: uuid.UUID
     timestamp: datetime
+    event_type: Union[SDKEventType, str]  # Allow both enum and string values
+
+    @validator('event_type', pre=True)
+    def normalize_event_type(cls, v):
+        """Normalize event type to handle both uppercase and lowercase values."""
+        if isinstance(v, str):
+            # Convert to lowercase to match enum values
+            return v.lower()
+        return v
 
     class Config:
         from_attributes = True
