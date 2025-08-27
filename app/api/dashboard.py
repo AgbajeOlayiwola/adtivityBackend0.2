@@ -158,4 +158,27 @@ async def get_all_events(
     db: Session = Depends(get_db)
 ) -> List[schemas.Event]:
     """Get all standard (Web2) events for all client companies associated with the authenticated platform user."""
-    return crud.get_all_events_for_user(db=db, platform_user_id=current_user.id) 
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"🔍 get_all_events called for user: {current_user.id} ({current_user.email})")
+    
+    try:
+        # Get all events for the user
+        events = crud.get_all_events_for_user(db=db, platform_user_id=current_user.id)
+        logger.info(f"✅ Found {len(events)} events for user {current_user.id}")
+        
+        # Log some details about the events
+        if events:
+            logger.info(f"📊 First event: {events[0].id} - {events[0].event_name} (company: {events[0].client_company_id})")
+        
+        return events
+        
+    except Exception as e:
+        logger.error(f"❌ Error in get_all_events: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving events: {str(e)}"
+        ) 
