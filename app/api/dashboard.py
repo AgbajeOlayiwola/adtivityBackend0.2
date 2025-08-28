@@ -4,6 +4,8 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
 import uuid
+from sqlalchemy import func, desc
+from datetime import datetime, timedelta, timezone, date
 
 from ..core.database import get_db
 from ..core.security import get_current_platform_user
@@ -182,6 +184,154 @@ async def get_all_events(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error retrieving events: {str(e)}"
         ) 
+
+@router.get("/analytics/sessions/summary")
+async def sessions_summary(
+    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    days: int = Query(7, ge=1, le=90, description="Lookback window in days"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Summary of sessions: total sessions, per-day counts, avg events per session."""
+    # Resolve company IDs owned by user
+    if company_id:
+        company = crud.get_client_company_by_id(db, company_id=company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this company")
+        company_ids = [company_id]
+    else:
+        company_ids = [c.id for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
+        if not company_ids:
+            return {"total_sessions": 0, "avg_events_per_session": 0.0, "sessions_per_day": []}
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Total sessions (distinct session_id, non-empty)
+    total_sessions = db.query(func.count(func.distinct(models.Event.session_id))).filter(
+        models.Event.client_company_id.in_(company_ids),
+        models.Event.timestamp >= since,
+        models.Event.session_id.isnot(None),
+        models.Event.session_id != ""
+    ).scalar() or 0
+
+    # Average events per session
+    events_count = db.query(func.count(models.Event.id)).filter(
+        models.Event.client_company_id.in_(company_ids),
+        models.Event.timestamp >= since
+    ).scalar() or 0
+    avg_events_per_session = (events_count / total_sessions) if total_sessions else 0.0
+
+    # Sessions per day
+    rows = db.query(
+        func.date(models.Event.timestamp).label("day"),
+        func.count(func.distinct(models.Event.session_id)).label("sessions")
+    ).filter(
+        models.Event.client_company_id.in_(company_ids),
+        models.Event.timestamp >= since,
+        models.Event.session_id.isnot(None),
+        models.Event.session_id != ""
+    ).group_by(func.date(models.Event.timestamp)).order_by(func.date(models.Event.timestamp)).all()
+
+    sessions_per_day = [{"day": r.day.isoformat(), "sessions": int(r.sessions)} for r in rows]
+
+    return {
+        "total_sessions": int(total_sessions),
+        "avg_events_per_session": round(avg_events_per_session, 2),
+        "sessions_per_day": sessions_per_day
+    }
+
+
+@router.get("/analytics/regions/top")
+async def top_regions(
+    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    limit: int = Query(10, ge=1, le=50, description="Max regions to return"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Top regions by event count (country/region/city)."""
+    # Resolve company IDs owned by user
+    if company_id:
+        company = crud.get_client_company_by_id(db, company_id=company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this company")
+        company_ids = [company_id]
+    else:
+        company_ids = [c.id for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
+        if not company_ids:
+            return {"items": []}
+
+    rows = db.query(
+        models.Event.country,
+        models.Event.region,
+        models.Event.city,
+        func.count(models.Event.id).label("count")
+    ).filter(
+        models.Event.client_company_id.in_(company_ids),
+        models.Event.country.isnot(None),
+        models.Event.region.isnot(None),
+        models.Event.city.isnot(None)
+    ).group_by(
+        models.Event.country,
+        models.Event.region,
+        models.Event.city
+    ).order_by(desc("count")).limit(limit).all()
+
+    return {
+        "items": [
+            {
+                "country": r.country,
+                "region": r.region,
+                "city": r.city,
+                "count": int(r.count)
+            } for r in rows
+        ]
+    }
+
+
+@router.get("/analytics/sessions/recent")
+async def recent_sessions(
+    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    limit: int = Query(20, ge=1, le=100, description="Number of recent sessions"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Recent sessions with first/last timestamps and event counts."""
+    # Resolve company IDs owned by user
+    if company_id:
+        company = crud.get_client_company_by_id(db, company_id=company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this company")
+        company_ids = [company_id]
+    else:
+        company_ids = [c.id for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
+        if not company_ids:
+            return {"items": []}
+
+    # Subquery to aggregate per session
+    subq = db.query(
+        models.Event.session_id.label("session_id"),
+        func.min(models.Event.timestamp).label("first_seen"),
+        func.max(models.Event.timestamp).label("last_seen"),
+        func.count(models.Event.id).label("events")
+    ).filter(
+        models.Event.client_company_id.in_(company_ids),
+        models.Event.session_id.isnot(None),
+        models.Event.session_id != ""
+    ).group_by(models.Event.session_id).subquery()
+
+    rows = db.query(subq).order_by(desc(subq.c.last_seen)).limit(limit).all()
+
+    return {
+        "items": [
+            {
+                "session_id": r.session_id,
+                "first_seen": r.first_seen.isoformat() if r.first_seen else None,
+                "last_seen": r.last_seen.isoformat() if r.last_seen else None,
+                "events": int(r.events)
+            } for r in rows
+        ]
+    }
+
 
 @router.get("/debug/db-status")
 async def debug_database_status(db: Session = Depends(get_db)):

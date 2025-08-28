@@ -19,6 +19,10 @@ def create_event(
     session_id: Optional[str] = None,
     properties: Optional[dict] = None,
     timestamp: Optional[datetime] = None,
+    country: Optional[str] = None,
+    region: Optional[str] = None,
+    city: Optional[str] = None,
+    ip_address: Optional[str] = None,
 ) -> Event:
     """Create a new event."""
     db_event = Event(
@@ -30,6 +34,10 @@ def create_event(
         session_id=session_id,
         properties=properties or {},
         timestamp=timestamp or datetime.now(timezone.utc),
+        country=country,
+        region=region,
+        city=city,
+        ip_address=ip_address,
     )
     db.add(db_event)
     db.commit()
@@ -62,6 +70,10 @@ def create_web3_event(
     contract_address: Optional[str] = None,
     properties: Optional[dict] = None,
     timestamp: Optional[datetime] = None,
+    country: Optional[str] = None,
+    region: Optional[str] = None,
+    city: Optional[str] = None,
+    ip_address: Optional[str] = None,
 ) -> Web3Event:
     """Create a new Web3 event."""
     db_event = Web3Event(
@@ -74,6 +86,10 @@ def create_web3_event(
         contract_address=contract_address,
         properties=properties or {},
         timestamp=timestamp or datetime.now(timezone.utc),
+        country=country,
+        region=region,
+        city=city,
+        ip_address=ip_address,
     )
     db.add(db_event)
     db.commit()
@@ -107,7 +123,7 @@ def handle_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventPayloa
             email=payload.user_id,
             wallet_address=payload.wallet_address,
             name=None,
-            country=None
+            country=payload.country
         )
         if user:
             user_id = str(user.id)
@@ -122,7 +138,11 @@ def handle_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventPayloa
         anonymous_id=payload.anonymous_id,
         session_id=payload.session_id,
         properties=payload.properties or {},
-        timestamp=payload.timestamp or datetime.now(timezone.utc)
+        timestamp=payload.timestamp or datetime.now(timezone.utc),
+        country=payload.country,
+        region=payload.region,
+        city=payload.city,
+        ip_address=payload.ip_address,
     )
 
 
@@ -142,7 +162,7 @@ def handle_web3_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventP
             email=payload.user_id,
             wallet_address=payload.wallet_address,
             name=None,
-            country=None
+            country=payload.country
         )
     
     # Create the Web3 event
@@ -156,8 +176,12 @@ def handle_web3_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventP
         transaction_hash=payload.transaction_hash,
         contract_address=payload.contract_address,
         properties=payload.properties or {},
-        timestamp=payload.timestamp
-    ) 
+        timestamp=payload.timestamp or datetime.now(timezone.utc),
+        country=payload.country,
+        region=payload.region,
+        city=payload.city,
+        ip_address=payload.ip_address,
+    )
 
 
 def get_all_events_for_user(db: Session, platform_user_id: uuid.UUID):
