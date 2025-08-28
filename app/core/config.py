@@ -42,6 +42,17 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_PER_MINUTE: int = Field(default=60, description="Rate limit per minute per IP")
     
+    # Twitter OAuth Configuration
+    TWITTER_CLIENT_ID: Optional[str] = Field(default=None, description="Twitter OAuth 2.0 Client ID")
+    TWITTER_CLIENT_SECRET: Optional[str] = Field(default=None, description="Twitter OAuth 2.0 Client Secret")
+    TWITTER_REDIRECT_URI: Optional[str] = Field(default=None, description="Twitter OAuth redirect URI")
+    TWITTER_SCOPE: str = Field(default="tweet.read users.read follows.read offline.access", description="Twitter OAuth scopes")
+    
+    # Twitter API Configuration
+    TWITTER_API_BASE_URL: str = Field(default="https://api.twitter.com/2", description="Twitter API v2 base URL")
+    TWITTER_OAUTH_BASE_URL: str = Field(default="https://twitter.com/i/oauth2/authorize", description="Twitter OAuth authorization URL")
+    TWITTER_TOKEN_URL: str = Field(default="https://api.twitter.com/2/oauth2/token", description="Twitter OAuth token URL")
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
