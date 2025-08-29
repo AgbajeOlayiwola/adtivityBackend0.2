@@ -17,15 +17,12 @@ router = APIRouter(prefix="/sdk", tags=["SDK Events"])
 logger = logging.getLogger(__name__)
 
 
-def _generate_session_id(company_id: str, user_id: str, anonymous_id: str, client_ip: str, timestamp: datetime) -> str:
-    """Generate a deterministic session id for a 30-minute bucket.
-    Priority: user_id > anonymous_id > client_ip
+def _generate_session_id(company_id: str, user_id: str, anonymous_id: str, client_ip: str) -> str:
+    """Generate a deterministic session id per user identity.
+    Priority: user_id > anonymous_id > client_ip. No time bucketing.
     """
     principal = user_id or anonymous_id or client_ip or "unknown"
-    # 30-minute bucket start
-    bucket_minute = (timestamp.minute // 30) * 30
-    bucket_start = timestamp.replace(minute=bucket_minute, second=0, microsecond=0)
-    base = f"{company_id}:{principal}:{bucket_start.isoformat()}"
+    base = f"{company_id}:{principal}"
     return hashlib.sha256(base.encode("utf-8")).hexdigest()[:32]
 
 
@@ -70,14 +67,13 @@ async def receive_sdk_event(
                 payload.region = payload.region or location_data.get("region")
                 payload.city = payload.city or location_data.get("city")
 
-            # Ensure session_id
+            # Ensure session_id (per-user deterministic)
             if not payload.session_id:
                 payload.session_id = _generate_session_id(
                     company_id=str(company.id),
                     user_id=payload.user_id or "",
                     anonymous_id=payload.anonymous_id or "",
                     client_ip=client_ip,
-                    timestamp=payload.timestamp if isinstance(payload.timestamp, datetime) else datetime.now(timezone.utc)
                 )
 
             # Detect Web3 event
