@@ -7,6 +7,7 @@ from passlib.context import CryptContext
 from fastapi import HTTPException, status, Depends, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+import uuid
 
 from .config import settings
 from .database import get_db
@@ -71,14 +72,21 @@ async def get_current_platform_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    user_id: int = payload.get("sub")
-    if user_id is None:
+    sub_value = payload.get("sub")
+    if not sub_value:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials: No user ID in token"
         )
+    try:
+        user_uuid = uuid.UUID(str(sub_value))
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials: Invalid user ID format"
+        )
     
-    platform_user = crud.get_platform_user_by_id(db, user_id=user_id)
+    platform_user = crud.get_platform_user_by_id(db, user_id=user_uuid)
     if not platform_user or not platform_user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
