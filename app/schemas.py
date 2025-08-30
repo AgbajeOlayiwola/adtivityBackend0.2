@@ -542,3 +542,29 @@ class ImportTemplates(BaseModel):
     """
     templates: List[ImportTemplate] = Field(..., description="Available import templates")
     instructions: str = Field(..., description="General import instructions")
+
+
+# ====================================================================================
+# --- Unique Users Analytics Schemas: Models for user analytics. ---
+# ====================================================================================
+class UniqueUserData(BaseModel):
+    """
+    Schema for unique user analytics data.
+    """
+    session_id: str = Field(..., description="Unique session identifier")
+    first_seen: datetime = Field(..., description="First time this user was seen")
+    last_seen: datetime = Field(..., description="Last time this user was seen")
+    total_events: int = Field(..., description="Total number of events from this user")
+    company_id: Optional[uuid.UUID] = Field(None, description="Company ID if filtered")
+    company_name: Optional[str] = Field(None, description="Company name if filtered")
+
+class UniqueUsersResponse(BaseModel):
+    """
+    Response schema for unique users analytics.
+    """
+    total_unique_users: int = Field(..., description="Total number of unique users (sessions)")
+    total_events: int = Field(..., description="Total number of events")
+    avg_events_per_user: float = Field(..., description="Average events per user")
+    users_per_day: List[Dict[str, Union[str, int]]] = Field(..., description="Daily user counts")
+    recent_users: List[UniqueUserData] = Field(..., description="Most recent users")
+    top_users_by_events: List[UniqueUserData] = Field(..., description="Users with most events")
