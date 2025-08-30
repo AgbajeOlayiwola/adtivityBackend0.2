@@ -382,4 +382,114 @@ async def debug_current_user(
         "is_active": current_user.is_active,
         "is_admin": current_user.is_admin,
         "created_at": current_user.created_at.isoformat() if current_user.created_at else None
-    } 
+    }
+
+
+@router.get("/analytics/unique-users", response_model=schemas.UniqueUsersResponse)
+async def unique_users_analytics(
+    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
+    limit: int = Query(20, ge=1, le=100, description="Number of recent/top users to return"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Get unique users analytics including total users, events per user, and recent activity."""
+    # Resolve company IDs owned by user
+    if company_id:
+        company = crud.get_client_company_by_id(db, company_id=company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized for this company")
+        company_ids = [company_id]
+        company_name = company.name
+    else:
+        company_ids = [c.id for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
+        company_name = None
+        if not company_ids:
+            return schemas.UniqueUsersResponse(
+                total_unique_users=0,
+                total_events=0,
+                avg_events_per_user=0.0,
+                users_per_day=[],
+                recent_users=[],
+                top_users_by_events=[]
+            )
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Total unique users (distinct session_id, non-empty)
+    total_unique_users = db.query(func.count(func.distinct(models.Event.session_id))).filter(
+        models.Event.client_company_id.in_(company_ids),
+        models.Event.timestamp >= since,
+        models.Event.session_id.isnot(None),
+        models.Event.session_id != ""
+    ).scalar() or 0
+
+    # Total events
+    total_events = db.query(func.count(models.Event.id)).filter(
+        models.Event.client_company_id.in_(company_ids),
+        models.Event.timestamp >= since
+    ).scalar() or 0
+
+    # Average events per user
+    avg_events_per_user = (total_events / total_unique_users) if total_unique_users else 0.0
+
+    # Users per day
+    users_per_day_rows = db.query(
+        func.date(models.Event.timestamp).label("day"),
+        func.count(func.distinct(models.Event.session_id)).label("users")
+    ).filter(
+        models.Event.client_company_id.in_(company_ids),
+        models.Event.timestamp >= since,
+        models.Event.session_id.isnot(None),
+        models.Event.session_id != ""
+    ).group_by(func.date(models.Event.timestamp)).order_by(func.date(models.Event.timestamp)).all()
+
+    users_per_day = [{"day": r.day.isoformat(), "users": int(r.users)} for r in users_per_day_rows]
+
+    # Recent users (most recently active)
+    recent_users_subq = db.query(
+        models.Event.session_id.label("session_id"),
+        func.min(models.Event.timestamp).label("first_seen"),
+        func.max(models.Event.timestamp).label("last_seen"),
+        func.count(models.Event.id).label("total_events")
+    ).filter(
+        models.Event.client_company_id.in_(company_ids),
+        models.Event.session_id.isnot(None),
+        models.Event.session_id != ""
+    ).group_by(models.Event.session_id).subquery()
+
+    recent_users_rows = db.query(recent_users_subq).order_by(desc(recent_users_subq.c.last_seen)).limit(limit).all()
+
+    recent_users = [
+        schemas.UniqueUserData(
+            session_id=r.session_id,
+            first_seen=r.first_seen,
+            last_seen=r.last_seen,
+            total_events=int(r.total_events),
+            company_id=company_id,
+            company_name=company_name
+        ) for r in recent_users_rows
+    ]
+
+    # Top users by events
+    top_users_rows = db.query(recent_users_subq).order_by(desc(recent_users_subq.c.total_events)).limit(limit).all()
+
+    top_users_by_events = [
+        schemas.UniqueUserData(
+            session_id=r.session_id,
+            first_seen=r.first_seen,
+            last_seen=r.last_seen,
+            total_events=int(r.total_events),
+            company_id=company_id,
+            company_name=company_name
+        ) for r in top_users_rows
+    ]
+
+    return schemas.UniqueUsersResponse(
+        total_unique_users=int(total_unique_users),
+        total_events=int(total_events),
+        avg_events_per_user=round(avg_events_per_user, 2),
+        users_per_day=users_per_day,
+        recent_users=recent_users,
+        top_users_by_events=top_users_by_events
+    ) 
