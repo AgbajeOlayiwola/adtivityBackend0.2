@@ -230,6 +230,11 @@ async def security_middleware_handler(request: Request, call_next):
     client_ip = middleware._get_client_ip(request)
     client_id = middleware.get_client_identifier(request)
     
+    # Allow CORS preflight requests to pass through without security checks
+    if request.method == "OPTIONS":
+        response = await call_next(request)
+        return response
+    
     # Check if IP is blocked
     if middleware.is_ip_blocked(client_ip):
         return JSONResponse(
