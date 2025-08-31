@@ -39,25 +39,11 @@ app = FastAPI(
 # Add security middleware (must be first)
 app.middleware("http")(security_middleware_handler)
 
-# Add CORS middleware
+# Add CORS middleware - TEMPORARILY ALLOWING ALL ORIGINS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:8080", 
-        "http://localhost:3001",
-        "http://localhost:5173",  # Vite default
-        "http://localhost:4173",  # Vite preview
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8080",
-        "http://127.0.0.1:5173",
-        "https://yourdomain.com",
-        "https://*.herokuapp.com",  # Heroku domains
-        "https://*.vercel.app",     # Vercel domains
-        "https://*.netlify.app",    # Netlify domains
-        "*"  # Allow all origins for development (remove in production)
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins temporarily
+    allow_credentials=False,  # Disable credentials temporarily
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=[
         "Authorization",
