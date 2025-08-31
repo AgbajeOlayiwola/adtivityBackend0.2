@@ -36,22 +36,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add security middleware (must be first) - TEMPORARILY DISABLED
+# ALL MIDDLEWARE TEMPORARILY DISABLED FOR TESTING
 # app.middleware("http")(security_middleware_handler)
-
-# Add CORS middleware - TEMPORARILY ALLOWING ALL ORIGINS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins temporarily
-    allow_credentials=False,  # Disable credentials temporarily
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=[
-        "Authorization",
-        "Content-Type",
-        "X-API-Key",
-        "X-Requested-With"
-    ],
-)
+# app.add_middleware(CORSMiddleware, ...)
 
 # Include API routers
 app.include_router(auth_router)
