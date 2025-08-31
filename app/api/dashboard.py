@@ -9,6 +9,12 @@ from datetime import datetime, timedelta, timezone, date
 
 from ..core.database import get_db
 from ..core.security import get_current_platform_user
+from ..core.security_decorators import (
+    rate_limit_by_user,
+    validate_query_parameters,
+    log_sensitive_operations,
+    validate_date_range
+)
 from .. import crud, schemas, models
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard Management"])
@@ -186,6 +192,9 @@ async def get_all_events(
         ) 
 
 @router.get("/analytics/sessions/summary")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@validate_query_parameters(max_days=90)
+@log_sensitive_operations("sessions_summary")
 async def sessions_summary(
     company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
     days: int = Query(7, ge=1, le=90, description="Lookback window in days"),
@@ -242,6 +251,9 @@ async def sessions_summary(
 
 
 @router.get("/analytics/regions/top")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@validate_query_parameters(max_limit=50)
+@log_sensitive_operations("top_regions")
 async def top_regions(
     company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
     limit: int = Query(10, ge=1, le=50, description="Max regions to return"),
@@ -289,6 +301,9 @@ async def top_regions(
 
 
 @router.get("/analytics/sessions/recent")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@validate_query_parameters(max_limit=100)
+@log_sensitive_operations("recent_sessions")
 async def recent_sessions(
     company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
     limit: int = Query(20, ge=1, le=100, description="Number of recent sessions"),
@@ -386,6 +401,9 @@ async def debug_current_user(
 
 
 @router.get("/analytics/unique-users", response_model=schemas.UniqueUsersResponse)
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@validate_query_parameters(max_days=365, max_limit=100)
+@log_sensitive_operations("unique_users_analytics")
 async def unique_users_analytics(
     company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
     days: int = Query(30, ge=1, le=365, description="Lookback window in days"),

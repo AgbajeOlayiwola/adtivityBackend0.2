@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 
 from .core.config import settings
 from .core.database import init_db, close_db
+from .core.security_middleware import security_middleware_handler
+from .core.security_config import get_security_config
 from .api import (
     auth_router,
     dashboard_router,
@@ -35,13 +37,19 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Get security configuration
+security_config = get_security_config()
+
+# Add security middleware (must be first)
+app.middleware("http")(security_middleware_handler)
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=security_config.ALLOWED_ORIGINS,
+    allow_credentials=security_config.ALLOW_CREDENTIALS,
+    allow_methods=security_config.ALLOWED_METHODS,
+    allow_headers=security_config.ALLOWED_HEADERS,
 )
 
 # Include API routers

@@ -95,6 +95,36 @@ class PlatformUserLogin(BaseModel):
     email: str
     password: str
 
+class PasswordResetRequest(BaseModel):
+    """
+    Schema for requesting a password reset.
+    """
+    email: str
+
+class PasswordResetConfirm(BaseModel):
+    """
+    Schema for confirming a password reset with token.
+    """
+    token: str
+    new_password: str
+
+class PasswordChange(BaseModel):
+    """
+    Schema for changing password when user is authenticated.
+    """
+    current_password: str
+    new_password: str
+
+class LoginAttempt(BaseModel):
+    """
+    Schema for tracking login attempts.
+    """
+    email: str
+    ip_address: str
+    user_agent: str
+    success: bool
+    timestamp: datetime
+
 class PlatformUser(PlatformUserBase):
     """
     The complete schema for a PlatformUser, as retrieved from the database.

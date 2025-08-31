@@ -102,6 +102,46 @@ class ClientAppUser(Base):
     platform_user = relationship("PlatformUser")
 
 
+class LoginAttempt(Base):
+    """
+    Blueprint for tracking login attempts for security.
+    """
+    __tablename__ = "login_attempts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    email = Column(String, index=True, nullable=False)
+    ip_address = Column(String, nullable=False)
+    user_agent = Column(String)
+    success = Column(Boolean, default=False)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Index for efficient querying
+    __table_args__ = (
+        Index('idx_login_attempts_email_timestamp', 'email', 'timestamp'),
+        Index('idx_login_attempts_ip_timestamp', 'ip_address', 'timestamp'),
+    )
+
+
+class PasswordResetToken(Base):
+    """
+    Blueprint for password reset tokens.
+    """
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    email = Column(String, index=True, nullable=False)
+    token_hash = Column(String, nullable=False, unique=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Index for efficient querying
+    __table_args__ = (
+        Index('idx_password_reset_email_expires', 'email', 'expires_at'),
+        Index('idx_password_reset_token_hash', 'token_hash'),
+    )
+
+
 class Event(Base):
     """
     Blueprint for the 'events' table.
