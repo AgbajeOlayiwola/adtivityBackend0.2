@@ -7,7 +7,6 @@ from contextlib import asynccontextmanager
 from .core.config import settings
 from .core.database import init_db, close_db
 from .core.security_middleware import security_middleware_handler
-from .core.security_config import get_security_config
 from .api import (
     auth_router,
     dashboard_router,
@@ -37,19 +36,35 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Get security configuration
-security_config = get_security_config()
-
 # Add security middleware (must be first)
 app.middleware("http")(security_middleware_handler)
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=security_config.ALLOWED_ORIGINS,
-    allow_credentials=security_config.ALLOW_CREDENTIALS,
-    allow_methods=security_config.ALLOWED_METHODS,
-    allow_headers=security_config.ALLOWED_HEADERS,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:8080", 
+        "http://localhost:3001",
+        "http://localhost:5173",  # Vite default
+        "http://localhost:4173",  # Vite preview
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:5173",
+        "https://yourdomain.com",
+        "https://*.herokuapp.com",  # Heroku domains
+        "https://*.vercel.app",     # Vercel domains
+        "https://*.netlify.app",    # Netlify domains
+        "*"  # Allow all origins for development (remove in production)
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-API-Key",
+        "X-Requested-With"
+    ],
 )
 
 # Include API routers
