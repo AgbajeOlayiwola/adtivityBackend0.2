@@ -36,8 +36,8 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add security middleware (must be first)
-app.middleware("http")(security_middleware_handler)
+# Add security middleware (must be first) - TEMPORARILY DISABLED
+# app.middleware("http")(security_middleware_handler)
 
 # Add CORS middleware - TEMPORARILY ALLOWING ALL ORIGINS
 app.add_middleware(
