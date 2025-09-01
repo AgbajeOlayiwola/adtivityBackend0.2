@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from .core.config import settings
 from .core.database import init_db, close_db
 from .core.security_middleware import security_middleware_handler
+from .core.cors_middleware import CustomCORSMiddleware
 from .api import (
     auth_router,
     dashboard_router,
@@ -39,29 +40,18 @@ app = FastAPI(
 # Add security middleware (must be first) - TEMPORARILY DISABLED
 # app.middleware("http")(security_middleware_handler)
 
-# Add CORS middleware for Vercel frontend
+# Add custom CORS middleware
+# SDK endpoints allow all origins, other endpoints are restricted
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+    CustomCORSMiddleware,
+    restricted_origins=[
         "https://adtivity.vercel.app",  # Your Vercel frontend
-        "https://autoyage.vercel.app",  # Another frontend app
         "http://localhost:3000",        # Local development
         "http://localhost:3001",        # Local development
         "http://localhost:8080",        # Local development
         "http://localhost:9999",        # Local development
     ],
-    allow_credentials=True,  # Enable credentials for auth headers
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=[
-        "Authorization",
-        "Content-Type",
-        "X-API-Key",
-        "X-Requested-With",
-        "user-role",  # Frontend is requesting this header
-        "authorization",  # Lowercase version
-        "content-type",   # Lowercase version
-        "x-api-key",      # Lowercase version for SDK
-    ],
+    sdk_paths=["/sdk/", "/sdk/event", "/sdk/events"]
 )
 
 # Include API routers
