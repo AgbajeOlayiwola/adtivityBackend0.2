@@ -55,7 +55,10 @@ app.add_middleware(
         "Authorization",
         "Content-Type",
         "X-API-Key",
-        "X-Requested-With"
+        "X-Requested-With",
+        "user-role",  # Frontend is requesting this header
+        "authorization",  # Lowercase version
+        "content-type",   # Lowercase version
     ],
 )
 
