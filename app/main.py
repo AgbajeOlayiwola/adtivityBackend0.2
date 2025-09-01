@@ -44,6 +44,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://adtivity.vercel.app",  # Your Vercel frontend
+        "https://autoyage.vercel.app",  # Another frontend app
         "http://localhost:3000",        # Local development
         "http://localhost:3001",        # Local development
         "http://localhost:8080",        # Local development
@@ -59,6 +60,7 @@ app.add_middleware(
         "user-role",  # Frontend is requesting this header
         "authorization",  # Lowercase version
         "content-type",   # Lowercase version
+        "x-api-key",      # Lowercase version for SDK
     ],
 )
 
