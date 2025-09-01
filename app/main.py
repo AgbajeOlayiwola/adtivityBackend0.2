@@ -36,9 +36,28 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# ALL MIDDLEWARE TEMPORARILY DISABLED FOR TESTING
+# Add security middleware (must be first) - TEMPORARILY DISABLED
 # app.middleware("http")(security_middleware_handler)
-# app.add_middleware(CORSMiddleware, ...)
+
+# Add CORS middleware for Vercel frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://adtivity.vercel.app",  # Your Vercel frontend
+        "http://localhost:3000",        # Local development
+        "http://localhost:3001",        # Local development
+        "http://localhost:8080",        # Local development
+        "http://localhost:9999",        # Local development
+    ],
+    allow_credentials=True,  # Enable credentials for auth headers
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "X-API-Key",
+        "X-Requested-With"
+    ],
+)
 
 # Include API routers
 app.include_router(auth_router)
