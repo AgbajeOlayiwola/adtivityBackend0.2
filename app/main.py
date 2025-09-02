@@ -14,7 +14,8 @@ from .api import (
     sdk_router,
     analytics_router,
     system_router,
-    imports_router
+    imports_router,
+    twitter_router
 )
 
 
@@ -61,6 +62,7 @@ app.include_router(sdk_router)
 app.include_router(analytics_router)
 app.include_router(system_router)
 app.include_router(imports_router)
+app.include_router(twitter_router)
 
 
 @app.get("/", tags=["Root"])

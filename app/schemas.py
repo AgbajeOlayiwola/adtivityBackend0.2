@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List, Dict, Any, Union
-from datetime import datetime
+from datetime import datetime, date
 from enum import Enum
 import uuid
 
@@ -116,29 +116,32 @@ class PasswordChange(BaseModel):
     new_password: str
 
 class LoginAttempt(BaseModel):
-    """
-    Schema for tracking login attempts.
-    """
+    """Login attempt schema."""
+    id: int
     email: str
     ip_address: str
     user_agent: str
     success: bool
-    timestamp: datetime
-
-class PlatformUser(PlatformUserBase):
-    """
-    The complete schema for a PlatformUser, as retrieved from the database.
-    It includes database-specific fields like `id` and `created_at`.
-    Note the use of `from_attributes = True` for SQLAlchemy compatibility.
-    """
-    id: uuid.UUID
     created_at: datetime
-    last_login: Optional[datetime] = None
-    client_companies: List['ClientCompany'] = []
-
+    
     class Config:
         from_attributes = True
-        # The 'ClientCompany' forward reference is resolved with `from __future__ import annotations`.
+
+
+class PlatformUser(BaseModel):
+    """Platform user schema."""
+    id: uuid.UUID
+    email: str
+    first_name: str = None
+    last_name: str = None
+    is_active: bool = True
+    is_verified: bool = False
+    role: str = "user"
+    created_at: datetime
+    last_login: datetime = None
+    
+    class Config:
+        from_attributes = True
 
 # ====================================================================================
 # --- ClientCompany Schemas: Models for the companies using your SDK. ---
@@ -598,3 +601,203 @@ class UniqueUsersResponse(BaseModel):
     users_per_day: List[Dict[str, Union[str, int]]] = Field(..., description="Daily user counts")
     recent_users: List[UniqueUserData] = Field(..., description="Most recent users")
     top_users_by_events: List[UniqueUserData] = Field(..., description="Users with most events")
+
+
+# Twitter Integration Schemas
+class CompanyTwitterBase(BaseModel):
+    """Base company Twitter schema."""
+    twitter_handle: str
+    description: str = None
+
+
+class CompanyTwitterCreate(CompanyTwitterBase):
+    """Create company Twitter account schema."""
+    company_id: int
+
+
+class CompanyTwitterUpdate(BaseModel):
+    """Update company Twitter account schema."""
+    description: str = None
+
+
+class CompanyTwitterResponse(CompanyTwitterBase):
+    """Company Twitter account response schema."""
+    id: int
+    company_id: int
+    twitter_user_id: str | None = None
+    followers_count: int
+    following_count: int
+    tweets_count: int
+    profile_image_url: str | None = None
+    verified: bool
+    last_updated: datetime
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class TwitterTweetBase(BaseModel):
+    """Base Twitter tweet schema."""
+    tweet_id: str
+    text: str
+    created_at: datetime
+    retweet_count: int = 0
+    like_count: int = 0
+    reply_count: int = 0
+    quote_count: int = 0
+
+
+class TwitterTweetResponse(TwitterTweetBase):
+    """Twitter tweet response schema."""
+    id: int
+    company_twitter_id: int
+    hashtags: list = None
+    mentions: list = None
+    sentiment_score: float = None
+    sentiment_label: str = None
+    collected_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class TwitterFollowerBase(BaseModel):
+    """Base Twitter follower schema."""
+    follower_id: str
+    username: str
+    display_name: str = None
+    verified: bool = False
+    followers_count: int = 0
+    following_count: int = 0
+    tweets_count: int = 0
+
+
+class TwitterFollowerResponse(TwitterFollowerBase):
+    """Twitter follower response schema."""
+    id: int
+    company_twitter_id: int
+    profile_image_url: str = None
+    followed_at: datetime = None
+    collected_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class HashtagCampaignBase(BaseModel):
+    """Base hashtag campaign schema."""
+    hashtag: str
+    campaign_name: str
+    description: str = None
+    start_date: datetime
+    end_date: datetime = None
+    target_mentions: int = 0
+
+
+class HashtagCampaignCreate(HashtagCampaignBase):
+    """Create hashtag campaign schema."""
+    company_id: int
+
+
+class HashtagCampaignUpdate(BaseModel):
+    """Update hashtag campaign schema."""
+    campaign_name: str = None
+    description: str = None
+    end_date: datetime = None
+    is_active: bool = None
+    target_mentions: int = None
+
+
+class HashtagCampaignResponse(HashtagCampaignBase):
+    """Hashtag campaign response schema."""
+    id: int
+    company_id: int
+    is_active: bool
+    current_mentions: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class HashtagMentionBase(BaseModel):
+    """Base hashtag mention schema."""
+    tweet_id: str
+    user_id: str
+    username: str
+    text: str
+    created_at: datetime
+    retweet_count: int = 0
+    like_count: int = 0
+    reply_count: int = 0
+
+
+class HashtagMentionResponse(HashtagMentionBase):
+    """Hashtag mention response schema."""
+    id: int
+    campaign_id: int
+    sentiment_score: float = None
+    sentiment_label: str = None
+    collected_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class TwitterAnalyticsBase(BaseModel):
+    """Base Twitter analytics schema."""
+    date: date
+    total_tweets: int = 0
+    total_likes: int = 0
+    total_retweets: int = 0
+    total_replies: int = 0
+    total_mentions: int = 0
+    followers_gained: int = 0
+    followers_lost: int = 0
+    engagement_rate: float = 0.0
+    reach_estimate: int = 0
+
+
+class TwitterAnalyticsResponse(TwitterAnalyticsBase):
+    """Twitter analytics response schema."""
+    id: int
+    company_twitter_id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class TwitterProfileData(BaseModel):
+    """Twitter profile data from API."""
+    id: str
+    username: str
+    name: str
+    description: str = None
+    profile_image_url: str = None
+    verified: bool = False
+    followers_count: int
+    following_count: int
+    tweets_count: int
+    created_at: datetime = None
+
+
+class TwitterSyncRequest(BaseModel):
+    """Request to sync Twitter data."""
+    company_id: int
+    twitter_handle: str
+    sync_tweets: bool = True
+    sync_followers: bool = True
+    max_tweets: int = 100
+    max_followers: int = 1000
+
+
+class TwitterSyncResponse(BaseModel):
+    """Twitter sync response."""
+    success: bool
+    message: str
+    profile_updated: bool = False
+    tweets_synced: int = 0
+    followers_synced: int = 0
+    errors: list = []

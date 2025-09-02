@@ -6,6 +6,7 @@ from .sdk import router as sdk_router
 from .analytics import router as analytics_router
 from .system import router as system_router
 from .imports import router as imports_router
+from .twitter import router as twitter_router
 
 __all__ = [
     "auth_router",
@@ -13,5 +14,6 @@ __all__ = [
     "sdk_router",
     "analytics_router",
     "system_router",
-    "imports_router"
+    "imports_router",
+    "twitter_router"
 ] 
