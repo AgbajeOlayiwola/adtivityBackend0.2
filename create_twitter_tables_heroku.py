@@ -3,8 +3,6 @@
 
 import os
 import sys
-from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, JSON, Date, Float, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
 
 def create_twitter_tables_heroku():
@@ -18,9 +16,40 @@ def create_twitter_tables_heroku():
         print("💡 Make sure you're running this on Heroku or have DATABASE_URL set")
         return
 
+    # Check if we're on Heroku
+    print(f"🌐 Environment: {'Heroku' if os.getenv('DYNO') else 'Local'}")
+    print(f"📊 Database URL: {database_url[:20]}...")
+
     try:
-        # Create engine
-        engine = create_engine(database_url)
+        # Try to import SQLAlchemy and PostgreSQL dependencies
+        from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, Date, Float, UniqueConstraint
+        from sqlalchemy.dialects.postgresql import JSONB
+        print("✅ SQLAlchemy and PostgreSQL dependencies loaded successfully")
+    except ImportError as e:
+        print(f"❌ Missing dependencies: {e}")
+        print("💡 Installing required packages...")
+        
+        # Try to install psycopg2-binary if missing
+        try:
+            import subprocess
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "psycopg2-binary"])
+            print("✅ psycopg2-binary installed successfully")
+            
+            # Re-import after installation
+            from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, Date, Float, UniqueConstraint
+            from sqlalchemy.dialects.postgresql import JSONB
+        except Exception as install_error:
+            print(f"❌ Failed to install dependencies: {install_error}")
+            print("💡 Please run: pip install psycopg2-binary sqlalchemy")
+            return
+
+    try:
+        # Create engine with explicit PostgreSQL dialect
+        if database_url.startswith('postgres://'):
+            # Heroku uses postgres:// but SQLAlchemy expects postgresql://
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        
+        engine = create_engine(database_url, echo=False)
         print("🔗 Connected to Heroku PostgreSQL database")
 
         # Test connection
@@ -32,6 +61,7 @@ def create_twitter_tables_heroku():
     except Exception as e:
         print(f"❌ Failed to connect to Heroku database: {e}")
         print("💡 Make sure DATABASE_URL is correct and database is accessible")
+        print(f"💡 Current DATABASE_URL: {database_url}")
         return
 
     # Create tables
