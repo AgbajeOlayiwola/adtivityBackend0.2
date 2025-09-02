@@ -29,12 +29,12 @@ python-jose==3.3.0
 passlib==1.7.4
 
 ##Optional Extras
-httpx==0.28.1
 python-multipart==0.0.20
 email-validator==2.0.0
 
-#HTTP requests for IP geolocation
+#HTTP requests for IP geolocation and Twitter API
 requests==2.31.0
+httpx==0.28.1
 
 #Twitter OAuth and API Integration
 tweepy==4.14.0
@@ -44,6 +44,5 @@ python-twitter-v2==0.8.0
 textblob==0.17.1
 vaderSentiment==3.3.2
 
-#OAuth and HTTP
-httpx==0.28.1
-authlib==1.2.1
+#OAuth - Use compatible version for python-twitter-v2
+authlib>=0.15.4,<0.16.0
