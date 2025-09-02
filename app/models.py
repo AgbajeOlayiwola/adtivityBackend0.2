@@ -4,7 +4,7 @@
 # the tables relate to each other.
 
 # --- Step 1: Get Our Tools Ready for Building! ---
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, JSON, DECIMAL
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, JSON, DECIMAL, Date, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.ext.declarative import declarative_base
@@ -67,6 +67,8 @@ class ClientCompany(Base):
     events = relationship("Event", back_populates="client_company")
     web3_events = relationship("Web3Event", back_populates="client_company")
     app_users = relationship("ClientAppUser", back_populates="company")
+    twitter_accounts = relationship("CompanyTwitter", back_populates="company")
+    hashtag_campaigns = relationship("HashtagCampaign", back_populates="company")
 
 
 class ClientAppUser(Base):
@@ -123,23 +125,151 @@ class LoginAttempt(Base):
 
 
 class PasswordResetToken(Base):
-    """
-    Blueprint for password reset tokens.
-    """
+    """Password reset token model."""
     __tablename__ = "password_reset_tokens"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
-    email = Column(String, index=True, nullable=False)
-    token_hash = Column(String, nullable=False, unique=True)
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, nullable=False, index=True)
+    token = Column(String, nullable=False, unique=True, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used = Column(Boolean, default=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+
+# Twitter Integration Models
+class CompanyTwitter(Base):
+    """Company Twitter account model."""
+    __tablename__ = "company_twitter"
     
-    # Index for efficient querying
-    __table_args__ = (
-        Index('idx_password_reset_email_expires', 'email', 'expires_at'),
-        Index('idx_password_reset_token_hash', 'token_hash'),
-    )
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("client_companies.id"), nullable=False, index=True)
+    twitter_handle = Column(String, nullable=False, unique=True, index=True)
+    twitter_user_id = Column(String, nullable=True, index=True)
+    followers_count = Column(Integer, default=0)
+    following_count = Column(Integer, default=0)
+    tweets_count = Column(Integer, default=0)
+    profile_image_url = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    verified = Column(Boolean, default=False)
+    last_updated = Column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    company = relationship("ClientCompany", back_populates="twitter_accounts")
+    tweets = relationship("TwitterTweet", back_populates="company_twitter")
+    followers = relationship("TwitterFollower", back_populates="company_twitter")
+
+
+class TwitterTweet(Base):
+    """Twitter tweet model."""
+    __tablename__ = "twitter_tweets"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    tweet_id = Column(String, nullable=False, unique=True, index=True)
+    company_twitter_id = Column(Integer, ForeignKey("company_twitter.id"), nullable=False, index=True)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    retweet_count = Column(Integer, default=0)
+    like_count = Column(Integer, default=0)
+    reply_count = Column(Integer, default=0)
+    quote_count = Column(Integer, default=0)
+    hashtags = Column(JSON, nullable=True)  # Store hashtags as JSON array
+    mentions = Column(JSON, nullable=True)  # Store mentions as JSON array
+    sentiment_score = Column(Float, nullable=True)
+    sentiment_label = Column(String, nullable=True)
+    collected_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    company_twitter = relationship("CompanyTwitter", back_populates="tweets")
+
+
+class TwitterFollower(Base):
+    """Twitter follower model."""
+    __tablename__ = "twitter_followers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    follower_id = Column(String, nullable=False, index=True)
+    company_twitter_id = Column(Integer, ForeignKey("company_twitter.id"), nullable=False, index=True)
+    username = Column(String, nullable=False, index=True)
+    display_name = Column(String, nullable=True)
+    profile_image_url = Column(String, nullable=True)
+    verified = Column(Boolean, default=False)
+    followers_count = Column(Integer, default=0)
+    following_count = Column(Integer, default=0)
+    tweets_count = Column(Integer, default=0)
+    followed_at = Column(DateTime(timezone=True), nullable=True)
+    collected_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    company_twitter = relationship("CompanyTwitter", back_populates="followers")
+
+
+class HashtagCampaign(Base):
+    """Hashtag campaign model."""
+    __tablename__ = "hashtag_campaigns"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("client_companies.id"), nullable=False, index=True)
+    hashtag = Column(String, nullable=False, index=True)
+    campaign_name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    start_date = Column(DateTime(timezone=True), nullable=False)
+    end_date = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, default=True)
+    target_mentions = Column(Integer, default=0)
+    current_mentions = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    company = relationship("ClientCompany", back_populates="hashtag_campaigns")
+    mentions = relationship("HashtagMention", back_populates="campaign")
+
+
+class HashtagMention(Base):
+    """Hashtag mention model."""
+    __tablename__ = "hashtag_mentions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("hashtag_campaigns.id"), nullable=False, index=True)
+    tweet_id = Column(String, nullable=False, index=True)
+    user_id = Column(String, nullable=False, index=True)
+    username = Column(String, nullable=False, index=True)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    retweet_count = Column(Integer, default=0)
+    like_count = Column(Integer, default=0)
+    reply_count = Column(Integer, default=0)
+    sentiment_score = Column(Float, nullable=True)
+    sentiment_label = Column(String, nullable=True)
+    collected_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    campaign = relationship("HashtagCampaign", back_populates="mentions")
+
+
+class TwitterAnalytics(Base):
+    """Twitter analytics summary model."""
+    __tablename__ = "twitter_analytics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    company_twitter_id = Column(Integer, ForeignKey("company_twitter.id"), nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    total_tweets = Column(Integer, default=0)
+    total_likes = Column(Integer, default=0)
+    total_retweets = Column(Integer, default=0)
+    total_replies = Column(Integer, default=0)
+    total_mentions = Column(Integer, default=0)
+    followers_gained = Column(Integer, default=0)
+    followers_lost = Column(Integer, default=0)
+    engagement_rate = Column(Float, default=0.0)
+    reach_estimate = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    
+    # Relationships
+    company_twitter = relationship("CompanyTwitter")
+    
+    # Composite unique constraint
+    __table_args__ = (UniqueConstraint('company_twitter_id', 'date', name='unique_company_date'),)
 
 
 class Event(Base):
