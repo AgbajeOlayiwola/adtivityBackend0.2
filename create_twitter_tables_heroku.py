@@ -3,8 +3,6 @@
 
 import os
 import sys
-from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, JSON, Date, Float, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime
 
 def create_twitter_tables_heroku():
@@ -18,20 +16,92 @@ def create_twitter_tables_heroku():
         print("💡 Make sure you're running this on Heroku or have DATABASE_URL set")
         return
 
-    try:
-        # Create engine
-        engine = create_engine(database_url)
-        print("🔗 Connected to Heroku PostgreSQL database")
+    # Check if we're on Heroku
+    print(f"🌐 Environment: {'Heroku' if os.getenv('DYNO') else 'Local'}")
+    print(f"📊 Database URL: {database_url[:20]}...")
 
+    # Try different PostgreSQL drivers
+    engine = None
+    driver_used = None
+    
+    # Try psycopg2 first (most common)
+    try:
+        from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, Date, Float, UniqueConstraint
+        from sqlalchemy.dialects.postgresql import JSONB
+        print("✅ SQLAlchemy and PostgreSQL dependencies loaded successfully")
+        
+        # Fix Heroku's postgres:// URL format
+        if database_url.startswith('postgres://'):
+            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+        
+        engine = create_engine(database_url, echo=False)
+        driver_used = "psycopg2"
+        print("✅ Using psycopg2 driver")
+        
+    except ImportError as e:
+        print(f"⚠️  psycopg2 not available: {e}")
+        
+        # Try asyncpg as fallback
+        try:
+            print("🔄 Trying asyncpg driver...")
+            from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, Date, Float, UniqueConstraint
+            from sqlalchemy.dialects.postgresql import JSONB
+            
+            # Fix Heroku's postgres:// URL format
+            if database_url.startswith('postgres://'):
+                database_url = database_url.replace('postgres://', 'postgresql+asyncpg://', 1)
+            else:
+                database_url = database_url.replace('postgresql://', 'postgresql+asyncpg://', 1)
+            
+            engine = create_engine(database_url, echo=False)
+            driver_used = "asyncpg"
+            print("✅ Using asyncpg driver")
+            
+        except ImportError as e2:
+            print(f"❌ asyncpg not available: {e2}")
+            
+            # Try to install psycopg2-binary
+            try:
+                print("💡 Installing psycopg2-binary...")
+                import subprocess
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "psycopg2-binary"])
+                print("✅ psycopg2-binary installed successfully")
+                
+                # Re-import after installation
+                from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, Date, Float, UniqueConstraint
+                from sqlalchemy.dialects.postgresql import JSONB
+                
+                # Fix Heroku's postgres:// URL format
+                if database_url.startswith('postgres://'):
+                    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+                elif 'asyncpg' in database_url:
+                    database_url = database_url.replace('postgresql+asyncpg://', 'postgresql://', 1)
+                
+                engine = create_engine(database_url, echo=False)
+                driver_used = "psycopg2 (installed)"
+                print("✅ Using psycopg2 driver (freshly installed)")
+                
+            except Exception as install_error:
+                print(f"❌ Failed to install dependencies: {install_error}")
+                print("💡 Please run: pip install psycopg2-binary sqlalchemy")
+                return
+
+    if not engine:
+        print("❌ No PostgreSQL driver available")
+        return
+
+    try:
         # Test connection
         with engine.connect() as conn:
             result = conn.execute(text("SELECT version()"))
             version = result.scalar()
             print(f"✅ PostgreSQL version: {version.split(',')[0]}")
+            print(f"🔗 Connected using {driver_used} driver")
 
     except Exception as e:
         print(f"❌ Failed to connect to Heroku database: {e}")
         print("💡 Make sure DATABASE_URL is correct and database is accessible")
+        print(f"💡 Current DATABASE_URL: {database_url}")
         return
 
     # Create tables
