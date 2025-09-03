@@ -6,11 +6,11 @@ from sqlalchemy import and_, desc, func
 from datetime import datetime, date, timedelta
 from ..models import (
     CompanyTwitter, TwitterTweet, TwitterFollower, 
-    HashtagCampaign, HashtagMention, TwitterAnalytics
+    HashtagMention, TwitterAnalytics, MentionNotification
 )
 from ..schemas import (
     CompanyTwitterCreate, CompanyTwitterUpdate,
-    HashtagCampaignCreate, HashtagCampaignUpdate
+    HashtagMentionResponse
 )
 
 
@@ -34,7 +34,7 @@ class TwitterCRUD:
         """Get company Twitter account by handle."""
         return db.query(CompanyTwitter).filter(CompanyTwitter.twitter_handle == handle).first()
     
-    def get_company_twitter_by_company(self, db: Session, company_id: int) -> Optional[CompanyTwitter]:
+    def get_company_twitter_by_company(self, db: Session, company_id: str) -> Optional[CompanyTwitter]:
         """Get company Twitter account by company ID."""
         return db.query(CompanyTwitter).filter(CompanyTwitter.company_id == company_id).first()
     
@@ -129,35 +129,6 @@ class TwitterCRUD:
             db.refresh(db_follower)
         return db_follower
     
-    # Hashtag Campaign operations
-    def create_hashtag_campaign(self, db: Session, campaign_data: HashtagCampaignCreate) -> HashtagCampaign:
-        """Create a new hashtag campaign."""
-        db_campaign = HashtagCampaign(**campaign_data.dict())
-        db.add(db_campaign)
-        db.commit()
-        db.refresh(db_campaign)
-        return db_campaign
-    
-    def get_hashtag_campaign(self, db: Session, campaign_id: int) -> Optional[HashtagCampaign]:
-        """Get hashtag campaign by ID."""
-        return db.query(HashtagCampaign).filter(HashtagCampaign.id == campaign_id).first()
-    
-    def get_company_campaigns(self, db: Session, company_id: int, active_only: bool = True) -> List[HashtagCampaign]:
-        """Get hashtag campaigns for a company."""
-        query = db.query(HashtagCampaign).filter(HashtagCampaign.company_id == company_id)
-        if active_only:
-            query = query.filter(HashtagCampaign.is_active == True)
-        return query.order_by(desc(HashtagCampaign.created_at)).all()
-    
-    def update_campaign_mentions(self, db: Session, campaign_id: int, mention_count: int) -> Optional[HashtagCampaign]:
-        """Update campaign mention count."""
-        db_campaign = self.get_hashtag_campaign(db, campaign_id)
-        if db_campaign:
-            db_campaign.current_mentions = mention_count
-            db.commit()
-            db.refresh(db_campaign)
-        return db_campaign
-    
     # Hashtag Mention operations
     def create_hashtag_mention(self, db: Session, mention_data: Dict[str, Any]) -> HashtagMention:
         """Create a new hashtag mention record."""
@@ -167,13 +138,131 @@ class TwitterCRUD:
         db.refresh(db_mention)
         return db_mention
     
-    def get_campaign_mentions(self, db: Session, campaign_id: int, limit: int = 100) -> List[HashtagMention]:
-        """Get mentions for a hashtag campaign."""
+    def get_hashtag_mentions(self, db: Session, hashtag: str, company_id: str, limit: int = 100) -> List[HashtagMention]:
+        """Get mentions for a specific hashtag."""
         return db.query(HashtagMention)\
-            .filter(HashtagMention.campaign_id == campaign_id)\
+            .filter(and_(
+                HashtagMention.hashtag == hashtag,
+                HashtagMention.company_id == company_id
+            ))\
             .order_by(desc(HashtagMention.created_at))\
             .limit(limit)\
             .all()
+    
+    def search_hashtag_mentions(self, db: Session, hashtag: str, company_id: str, limit: int = 100) -> List[HashtagMention]:
+        """Search for hashtag mentions for a company."""
+        return db.query(HashtagMention)\
+            .filter(and_(
+                HashtagMention.company_id == company_id,
+                HashtagMention.hashtag.ilike(f"%{hashtag}%")
+            ))\
+            .order_by(desc(HashtagMention.created_at))\
+            .limit(limit)\
+            .all()
+    
+    def get_company_mentions(self, db: Session, company_twitter_id: int, limit: int = 100) -> List[TwitterTweet]:
+        """Get all mentions of a company (tweets that mention the company's handle)."""
+        return db.query(TwitterTweet)\
+            .filter(TwitterTweet.mentions.isnot(None))\
+            .filter(TwitterTweet.company_twitter_id == company_twitter_id)\
+            .order_by(desc(TwitterTweet.created_at))\
+            .limit(limit)\
+            .all()
+    
+    def get_mentions_by_date_range(self, db: Session, company_twitter_id: int, start_date: datetime, end_date: datetime) -> List[TwitterTweet]:
+        """Get mentions of a company within a date range."""
+        return db.query(TwitterTweet)\
+            .filter(TwitterTweet.mentions.isnot(None))\
+            .filter(TwitterTweet.company_twitter_id == company_twitter_id)\
+            .filter(TwitterTweet.created_at >= start_date)\
+            .filter(TwitterTweet.created_at <= end_date)\
+            .order_by(desc(TwitterTweet.created_at))\
+            .all()
+    
+    def get_mention_analytics(self, db: Session, company_twitter_id: int, start_date: date, end_date: date) -> Dict[str, Any]:
+        """Get mention analytics for a date range."""
+        mentions = self.get_mentions_by_date_range(
+            db, company_twitter_id, 
+            datetime.combine(start_date, datetime.min.time()),
+            datetime.combine(end_date, datetime.max.time())
+        )
+        
+        total_mentions = len(mentions)
+        total_likes = sum(mention.like_count for mention in mentions)
+        total_retweets = sum(mention.retweet_count for mention in mentions)
+        total_replies = sum(mention.reply_count for mention in mentions)
+        
+        # Group by date
+        mentions_by_date = {}
+        for mention in mentions:
+            date_key = mention.created_at.date()
+            if date_key not in mentions_by_date:
+                mentions_by_date[date_key] = {
+                    'count': 0,
+                    'likes': 0,
+                    'retweets': 0,
+                    'replies': 0
+                }
+            mentions_by_date[date_key]['count'] += 1
+            mentions_by_date[date_key]['likes'] += mention.like_count
+            mentions_by_date[date_key]['retweets'] += mention.retweet_count
+            mentions_by_date[date_key]['replies'] += mention.reply_count
+        
+        return {
+            'total_mentions': total_mentions,
+            'total_likes': total_likes,
+            'total_retweets': total_retweets,
+            'total_replies': total_replies,
+            'mentions_by_date': mentions_by_date,
+            'date_range': {
+                'start_date': start_date,
+                'end_date': end_date
+            }
+        }
+    
+    def create_mention_notification(self, db: Session, mention_data: Dict[str, Any]) -> bool:
+        """Create a mention notification record (placeholder for future notification system)."""
+        # This is a placeholder for future notification system
+        # For now, we'll just return True to indicate the mention was processed
+        return True
+    
+    # Mention Notification operations
+    def create_mention_notification_prefs(self, db: Session, notification_data: Dict[str, Any]) -> 'MentionNotification':
+        """Create mention notification preferences for a company."""
+        from ..models import MentionNotification
+        db_notification = MentionNotification(**notification_data)
+        db.add(db_notification)
+        db.commit()
+        db.refresh(db_notification)
+        return db_notification
+    
+    def get_mention_notification_prefs(self, db: Session, company_id: str) -> Optional['MentionNotification']:
+        """Get mention notification preferences for a company."""
+        from ..models import MentionNotification
+        return db.query(MentionNotification).filter(MentionNotification.company_id == company_id).first()
+    
+    def update_mention_notification_prefs(self, db: Session, company_id: str, update_data: Dict[str, Any]) -> Optional['MentionNotification']:
+        """Update mention notification preferences for a company."""
+        from ..models import MentionNotification
+        db_notification = self.get_mention_notification_prefs(db, company_id)
+        if db_notification:
+            for field, value in update_data.items():
+                if hasattr(db_notification, field):
+                    setattr(db_notification, field, value)
+            db_notification.updated_at = datetime.utcnow()
+            db.commit()
+            db.refresh(db_notification)
+        return db_notification
+    
+    def delete_mention_notification_prefs(self, db: Session, company_id: str) -> bool:
+        """Delete mention notification preferences for a company."""
+        from ..models import MentionNotification
+        db_notification = self.get_mention_notification_prefs(db, company_id)
+        if db_notification:
+            db.delete(db_notification)
+            db.commit()
+            return True
+        return False
     
     # Twitter Analytics operations
     def create_analytics(self, db: Session, analytics_data: Dict[str, Any]) -> TwitterAnalytics:

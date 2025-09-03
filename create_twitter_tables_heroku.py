@@ -27,7 +27,8 @@ def create_twitter_tables_heroku():
     # Try psycopg2 first (most common)
     try:
         from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, Date, Float, UniqueConstraint
-        from sqlalchemy.dialects.postgresql import JSONB
+        from sqlalchemy.dialects.postgresql import JSONB, UUID
+        import uuid
         print("✅ SQLAlchemy and PostgreSQL dependencies loaded successfully")
         
         # Fix Heroku's postgres:// URL format
@@ -45,7 +46,8 @@ def create_twitter_tables_heroku():
         try:
             print("🔄 Trying asyncpg driver...")
             from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, Date, Float, UniqueConstraint
-            from sqlalchemy.dialects.postgresql import JSONB
+            from sqlalchemy.dialects.postgresql import JSONB, UUID
+            import uuid
             
             # Fix Heroku's postgres:// URL format
             if database_url.startswith('postgres://'):
@@ -69,7 +71,8 @@ def create_twitter_tables_heroku():
                 
                 # Re-import after installation
                 from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Boolean, DateTime, Text, Date, Float, UniqueConstraint
-                from sqlalchemy.dialects.postgresql import JSONB
+                from sqlalchemy.dialects.postgresql import JSONB, UUID
+                import uuid
                 
                 # Fix Heroku's postgres:// URL format
                 if database_url.startswith('postgres://'):
@@ -110,8 +113,8 @@ def create_twitter_tables_heroku():
     # Company Twitter table
     company_twitter = Table(
         'company_twitter', metadata,
-        Column('id', Integer, primary_key=True, index=True),
-        Column('company_id', Integer, nullable=False, index=True),
+        Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True),
+        Column('company_id', UUID(as_uuid=True), nullable=False, index=True),
         Column('twitter_handle', String, nullable=False, unique=True, index=True),
         Column('twitter_user_id', String, nullable=True, index=True),
         Column('followers_count', Integer, default=0),
@@ -127,9 +130,9 @@ def create_twitter_tables_heroku():
     # Twitter Tweets table
     twitter_tweets = Table(
         'twitter_tweets', metadata,
-        Column('id', Integer, primary_key=True, index=True),
+        Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True),
         Column('tweet_id', String, nullable=False, unique=True, index=True),
-        Column('company_twitter_id', Integer, nullable=False, index=True),
+        Column('company_twitter_id', UUID(as_uuid=True), nullable=False, index=True),
         Column('text', Text, nullable=False),
         Column('created_at', DateTime(timezone=True), nullable=False),
         Column('retweet_count', Integer, default=0),
@@ -146,9 +149,9 @@ def create_twitter_tables_heroku():
     # Twitter Followers table
     twitter_followers = Table(
         'twitter_followers', metadata,
-        Column('id', Integer, primary_key=True, index=True),
+        Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True),
         Column('follower_id', String, nullable=False, index=True),
-        Column('company_twitter_id', Integer, nullable=False, index=True),
+        Column('company_twitter_id', UUID(as_uuid=True), nullable=False, index=True),
         Column('username', String, nullable=False, index=True),
         Column('display_name', String, nullable=True),
         Column('profile_image_url', String, nullable=True),
@@ -160,45 +163,25 @@ def create_twitter_tables_heroku():
         Column('collected_at', DateTime(timezone=True), default=datetime.utcnow)
     )
 
-    # Hashtag Campaigns table
-    hashtag_campaigns = Table(
-        'hashtag_campaigns', metadata,
-        Column('id', Integer, primary_key=True, index=True),
-        Column('company_id', Integer, nullable=False, index=True),
-        Column('hashtag', String, nullable=False, index=True),
-        Column('campaign_name', String, nullable=False),
-        Column('description', Text, nullable=True),
-        Column('start_date', DateTime(timezone=True), nullable=False),
-        Column('end_date', DateTime(timezone=True), nullable=True),
-        Column('is_active', Boolean, default=True),
-        Column('target_mentions', Integer, default=0),
-        Column('current_mentions', Integer, default=0),
-        Column('created_at', DateTime(timezone=True), default=datetime.utcnow)
-    )
-
     # Hashtag Mentions table
     hashtag_mentions = Table(
         'hashtag_mentions', metadata,
-        Column('id', Integer, primary_key=True, index=True),
-        Column('campaign_id', Integer, nullable=False, index=True),
+        Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True),
+        Column('company_id', UUID(as_uuid=True), nullable=False, index=True),
+        Column('hashtag', String, nullable=False, index=True),
         Column('tweet_id', String, nullable=False, index=True),
-        Column('user_id', String, nullable=False, index=True),
         Column('username', String, nullable=False, index=True),
         Column('text', Text, nullable=False),
         Column('created_at', DateTime(timezone=True), nullable=False),
-        Column('retweet_count', Integer, default=0),
-        Column('like_count', Integer, default=0),
-        Column('reply_count', Integer, default=0),
-        Column('sentiment_score', Float, nullable=True),
-        Column('sentiment_label', String, nullable=True),
+        Column('engagement', Integer, default=0),
         Column('collected_at', DateTime(timezone=True), default=datetime.utcnow)
     )
 
     # Twitter Analytics table
     twitter_analytics = Table(
         'twitter_analytics', metadata,
-        Column('id', Integer, primary_key=True, index=True),
-        Column('company_twitter_id', Integer, nullable=False, index=True),
+        Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True),
+        Column('company_twitter_id', UUID(as_uuid=True), nullable=False, index=True),
         Column('date', Date, nullable=False, index=True),
         Column('total_tweets', Integer, default=0),
         Column('total_likes', Integer, default=0),
@@ -211,6 +194,22 @@ def create_twitter_tables_heroku():
         Column('reach_estimate', Integer, default=0),
         Column('created_at', DateTime(timezone=True), default=datetime.utcnow),
         UniqueConstraint('company_twitter_id', 'date', name='unique_company_date')
+    )
+
+    # Mention Notifications table
+    mention_notifications = Table(
+        'mention_notifications', metadata,
+        Column('id', UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True),
+        Column('company_id', UUID(as_uuid=True), nullable=False, index=True),
+        Column('twitter_handle', String, nullable=False, index=True),
+        Column('notification_email', String, nullable=True),
+        Column('notification_webhook', String, nullable=True),
+        Column('mention_keywords', JSONB, nullable=True),
+        Column('is_active', Boolean, default=True),
+        Column('last_notification_sent', DateTime(timezone=True), nullable=True),
+        Column('notification_count', Integer, default=0),
+        Column('created_at', DateTime(timezone=True), default=datetime.utcnow),
+        Column('updated_at', DateTime(timezone=True), default=datetime.utcnow)
     )
 
     # Create all tables
@@ -230,7 +229,8 @@ def create_twitter_tables_heroku():
 
         twitter_tables = [
             'company_twitter', 'twitter_tweets', 'twitter_followers',
-            'hashtag_campaigns', 'hashtag_mentions', 'twitter_analytics'
+            'hashtag_mentions', 'twitter_analytics',
+            'mention_notifications'
         ]
 
         print("\n📊 Database tables:")
