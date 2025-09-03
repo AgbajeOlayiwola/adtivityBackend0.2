@@ -58,6 +58,99 @@ class TwitterService:
             print(f"Error fetching Twitter user {username}: {e}")
             return None
     
+    async def search_users_autocomplete(self, query: str, max_results: int = 5) -> List[Dict]:
+        """Search for Twitter users with autocomplete functionality."""
+        try:
+            # Clean the query (remove @ if present)
+            query = query.lstrip("@").strip()
+            
+            if len(query) < 2:
+                return []
+            
+            async with httpx.AsyncClient() as client:
+                # Use the users/search endpoint for autocomplete
+                response = await client.get(
+                    f"{self.base_url}/users/search",
+                    headers=self.headers,
+                    params={
+                        "query": query,
+                        "max_results": max_results,
+                        "user.fields": "id,username,name,description,profile_image_url,verified,public_metrics,created_at"
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    users = data.get("data", [])
+                    
+                    user_list = []
+                    for user in users:
+                        # Extract metrics
+                        metrics = user.get("public_metrics", {})
+                        
+                        user_data = {
+                            "id": user.get("id"),
+                            "username": user.get("username"),
+                            "name": user.get("name"),
+                            "description": user.get("description", ""),
+                            "profile_image_url": user.get("profile_image_url"),
+                            "verified": user.get("verified", False),
+                            "followers_count": metrics.get("followers_count", 0),
+                            "following_count": metrics.get("following_count", 0),
+                            "tweets_count": metrics.get("tweet_count", 0),
+                            "created_at": user.get("created_at"),
+                            "display_name": f"@{user.get('username')} - {user.get('name', '')}",
+                            "verified_badge": "✓" if user.get("verified", False) else ""
+                        }
+                        
+                        user_list.append(user_data)
+                    
+                    return user_list
+                
+                return []
+                
+        except Exception as e:
+            print(f"Error searching Twitter users for '{query}': {e}")
+            return []
+    
+    async def validate_twitter_handle(self, handle: str) -> Dict:
+        """Validate a Twitter handle and return detailed information."""
+        try:
+            # Clean the handle
+            clean_handle = handle.lstrip("@").strip()
+            
+            if not clean_handle:
+                return {
+                    "valid": False,
+                    "error": "Handle cannot be empty"
+                }
+            
+            # Check if handle exists
+            user_data = await self.get_user_by_username(clean_handle)
+            
+            if user_data:
+                return {
+                    "valid": True,
+                    "handle": clean_handle,
+                    "user_data": user_data,
+                    "suggestions": await self.search_users_autocomplete(clean_handle, 5)
+                }
+            else:
+                # Handle doesn't exist, provide suggestions
+                suggestions = await self.search_users_autocomplete(clean_handle, 5)
+                return {
+                    "valid": False,
+                    "handle": clean_handle,
+                    "error": "Twitter handle not found",
+                    "suggestions": suggestions
+                }
+                
+        except Exception as e:
+            return {
+                "valid": False,
+                "error": f"Error validating handle: {str(e)}"
+            }
+    
     async def get_user_tweets(self, user_id: str, max_results: int = 100) -> List[TwitterTweetBase]:
         """Get recent tweets from a user."""
         try:
@@ -157,21 +250,23 @@ class TwitterService:
             print(f"Error fetching followers for user {user_id}: {e}")
             return []
     
-    async def search_hashtag(self, hashtag: str, max_results: int = 100) -> List[Dict]:
+    async def search_hashtag(self, hashtag: str, max_results: int = 10) -> List[Dict]:
         """Search for tweets with a specific hashtag."""
         try:
             # Remove # if present
             hashtag = hashtag.lstrip("#")
             
             async with httpx.AsyncClient() as client:
+                # Use the correct Twitter API v2 search endpoint
                 response = await client.get(
                     f"{self.base_url}/tweets/search/recent",
                     headers=self.headers,
                     params={
                         "query": f"#{hashtag}",
                         "max_results": max_results,
-                        "tweet.fields": "id,text,created_at,public_metrics,author_id",
-                        "user.fields": "id,username,name,verified"
+                        "tweet.fields": "id,text,created_at,public_metrics,author_id,entities",
+                        "user.fields": "id,username,name,verified,profile_image_url",
+                        "expansions": "author_id"
                     }
                 )
                 
@@ -185,7 +280,7 @@ class TwitterService:
                         author = users.get(tweet.get("author_id"), {})
                         metrics = tweet.get("public_metrics", {})
                         
-                        results.append({
+                        tweet_result = {
                             "tweet_id": tweet.get("id"),
                             "text": tweet.get("text"),
                             "created_at": tweet.get("created_at"),
@@ -196,14 +291,28 @@ class TwitterService:
                             "retweet_count": metrics.get("retweet_count", 0),
                             "like_count": metrics.get("like_count", 0),
                             "reply_count": metrics.get("reply_count", 0)
-                        })
+                        }
+                        
+                        results.append(tweet_result)
                     
                     return results
                 
-                return []
+                elif response.status_code == 401:
+                    print(f"❌ Twitter API: Unauthorized - Check your Bearer Token for hashtag #{hashtag}")
+                    return []
+                elif response.status_code == 403:
+                    print(f"❌ Twitter API: Forbidden - Check your API permissions for hashtag #{hashtag}")
+                    return []
+                elif response.status_code == 429:
+                    print(f"⚠️ Twitter API: Rate limit exceeded for hashtag #{hashtag}")
+                    print(f"   Rate limit reset: {response.headers.get('x-rate-limit-reset', 'unknown')}")
+                    return []
+                else:
+                    print(f"❌ Twitter API Error {response.status_code} for hashtag #{hashtag}")
+                    return []
                 
         except Exception as e:
-            print(f"Error searching hashtag #{hashtag}: {e}")
+            print(f"❌ Error searching hashtag #{hashtag}: {e}")
             return []
     
     def extract_hashtags(self, text: str) -> List[str]:

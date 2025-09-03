@@ -1,7 +1,7 @@
 """Twitter API endpoints for managing Twitter integration."""
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
 
@@ -11,9 +11,11 @@ from ..core.twitter_service import twitter_service
 from ..crud.twitter import twitter_crud
 from ..schemas import (
     CompanyTwitterCreate, CompanyTwitterResponse, CompanyTwitterUpdate,
-    HashtagCampaignCreate, HashtagCampaignResponse, HashtagCampaignUpdate,
     TwitterTweetResponse, TwitterFollowerResponse, TwitterAnalyticsResponse,
-    TwitterSyncRequest, TwitterSyncResponse
+    TwitterSyncRequest, TwitterSyncResponse, HashtagMentionResponse,
+    MentionResponse, MentionAnalyticsResponse, MentionSearchRequest, MentionNotificationRequest,
+    TwitterUserSuggestion, TwitterHandleValidationRequest, TwitterHandleValidationResponse,
+    TwitterUserSearchRequest, TwitterUserSearchResponse, HashtagSearchRequest, HashtagSearchResponse
 )
 from ..models import PlatformUser
 
@@ -30,13 +32,51 @@ async def create_twitter_account(
     # Check if company exists and user has access
     # TODO: Add company access validation
     
-    # Check if Twitter handle already exists
+    # Validate Twitter handle first
+    handle_validation = await twitter_service.validate_twitter_handle(twitter_data.twitter_handle)
+    
+    if not handle_validation["valid"]:
+        # Return validation error with suggestions
+        raise HTTPException(
+            status_code=400, 
+            detail={
+                "message": "Invalid Twitter handle",
+                "error": handle_validation["error"],
+                "suggestions": handle_validation["suggestions"],
+                "handle": twitter_data.twitter_handle
+            }
+        )
+    
+    # Check if Twitter handle already exists in our system
     existing = twitter_crud.get_company_twitter_by_handle(db, twitter_data.twitter_handle)
     if existing:
-        raise HTTPException(status_code=400, detail="Twitter handle already exists")
+        raise HTTPException(status_code=400, detail="Twitter handle already exists in our system")
+    
+    # Get Twitter profile data to populate additional fields
+    user_data = handle_validation["user_data"]
+    
+    # Create enhanced Twitter account data
+    enhanced_twitter_data = CompanyTwitterCreate(
+        company_id=twitter_data.company_id,
+        twitter_handle=twitter_data.twitter_handle,
+        description=twitter_data.description or user_data.description
+    )
     
     # Create Twitter account
-    twitter_account = twitter_crud.create_company_twitter(db, twitter_data)
+    twitter_account = twitter_crud.create_company_twitter(db, enhanced_twitter_data)
+    
+    # Update with Twitter API data
+    twitter_account.twitter_user_id = user_data.id
+    twitter_account.followers_count = user_data.followers_count
+    twitter_account.following_count = user_data.following_count
+    twitter_account.tweets_count = user_data.tweets_count
+    twitter_account.profile_image_url = user_data.profile_image_url
+    twitter_account.verified = user_data.verified
+    twitter_account.last_updated = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(twitter_account)
+    
     return twitter_account
 
 
@@ -234,87 +274,226 @@ async def get_company_followers(
     return followers
 
 
-@router.post("/campaigns/", response_model=HashtagCampaignResponse)
-async def create_hashtag_campaign(
-    campaign_data: HashtagCampaignCreate,
+@router.post("/search/hashtag", response_model=HashtagSearchResponse)
+async def search_hashtag(
+    search_request: HashtagSearchRequest,
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Search for tweets with a specific hashtag."""
+    results = await twitter_service.search_hashtag(search_request.hashtag, search_request.max_results)
+    return HashtagSearchResponse(
+        hashtag=search_request.hashtag,
+        results_count=len(results),
+        tweets=results
+    )
+
+
+# New Mention-related Endpoints
+@router.get("/accounts/{twitter_id}/mentions", response_model=List[MentionResponse])
+async def get_company_mentions(
+    twitter_id: int,
+    limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
 ):
-    """Create a new hashtag campaign."""
-    campaign = twitter_crud.create_hashtag_campaign(db, campaign_data)
-    return campaign
+    """Get all mentions of a company Twitter account."""
+    mentions = twitter_crud.get_company_mentions(db, twitter_id, limit)
+    return mentions
 
 
-@router.get("/campaigns/", response_model=List[HashtagCampaignResponse])
-async def get_company_campaigns(
-    company_id: int,
-    active_only: bool = Query(True),
-    db: Session = Depends(get_db),
-    current_user: PlatformUser = Depends(get_current_platform_user)
-):
-    """Get hashtag campaigns for a company."""
-    campaigns = twitter_crud.get_company_campaigns(db, company_id, active_only)
-    return campaigns
-
-
-@router.get("/campaigns/{campaign_id}", response_model=HashtagCampaignResponse)
-async def get_hashtag_campaign(
-    campaign_id: int,
-    db: Session = Depends(get_db),
-    current_user: PlatformUser = Depends(get_current_platform_user)
-):
-    """Get hashtag campaign by ID."""
-    campaign = twitter_crud.get_hashtag_campaign(db, campaign_id)
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-    
-    return campaign
-
-
-@router.put("/campaigns/{campaign_id}", response_model=HashtagCampaignResponse)
-async def update_hashtag_campaign(
-    campaign_id: int,
-    update_data: HashtagCampaignUpdate,
-    db: Session = Depends(get_db),
-    current_user: PlatformUser = Depends(get_current_platform_user)
-):
-    """Update hashtag campaign."""
-    campaign = twitter_crud.get_hashtag_campaign(db, campaign_id)
-    if not campaign:
-        raise HTTPException(status_code=404, detail="Campaign not found")
-    
-    # Update campaign
-    for field, value in update_data.dict(exclude_unset=True).items():
-        setattr(campaign, field, value)
-    
-    db.commit()
-    db.refresh(campaign)
-    return campaign
-
-
-@router.get("/analytics/{twitter_id}", response_model=List[TwitterAnalyticsResponse])
-async def get_twitter_analytics(
+@router.get("/accounts/{twitter_id}/mentions/analytics", response_model=MentionAnalyticsResponse)
+async def get_mention_analytics(
     twitter_id: int,
     start_date: date = Query(...),
     end_date: date = Query(...),
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
 ):
-    """Get Twitter analytics for a date range."""
-    analytics = twitter_crud.get_analytics_range(db, twitter_id, start_date, end_date)
+    """Get mention analytics for a company Twitter account within a date range."""
+    analytics = twitter_crud.get_mention_analytics(db, twitter_id, start_date, end_date)
     return analytics
 
 
-@router.post("/search/hashtag")
-async def search_hashtag(
-    hashtag: str = Query(..., description="Hashtag to search for (with or without #)"),
-    max_results: int = Query(100, ge=1, le=100),
+@router.post("/mentions/search", response_model=List[MentionResponse])
+async def search_mentions(
+    search_request: MentionSearchRequest,
+    db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
 ):
-    """Search for tweets with a specific hashtag."""
-    results = await twitter_service.search_hashtag(hashtag, max_results)
+    """Search for mentions across all company Twitter accounts."""
+    # Get company Twitter accounts
+    company_twitter = twitter_crud.get_company_twitter_by_company(db, search_request.company_id)
+    if not company_twitter:
+        raise HTTPException(status_code=404, detail="Company Twitter account not found")
+    
+    # Search mentions
+    if search_request.start_date and search_request.end_date:
+        mentions = twitter_crud.get_mentions_by_date_range(
+            db, company_twitter.id, search_request.start_date, search_request.end_date
+        )
+    else:
+        mentions = twitter_crud.get_company_mentions(db, company_twitter.id, search_request.limit)
+    
+    return mentions
+
+
+@router.post("/mentions/notifications/setup")
+async def setup_mention_notifications(
+    notification_request: MentionNotificationRequest,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Set up mention notifications for a company."""
+    # This is a placeholder for future notification system implementation
+    # For now, we'll just return a success message
+    
+    # Verify company exists
+    company_twitter = twitter_crud.get_company_twitter_by_company(db, notification_request.company_id)
+    if not company_twitter:
+        raise HTTPException(status_code=404, detail="Company Twitter account not found")
+    
     return {
-        "hashtag": hashtag,
-        "results_count": len(results),
-        "tweets": results
+        "message": "Mention notifications configured successfully",
+        "company_id": notification_request.company_id,
+        "twitter_handle": notification_request.twitter_handle,
+        "notification_email": notification_request.notification_email,
+        "notification_webhook": notification_request.notification_webhook,
+        "mention_keywords": notification_request.mention_keywords,
+        "is_active": notification_request.is_active
     }
+
+
+@router.get("/mentions/recent", response_model=List[MentionResponse])
+async def get_recent_mentions(
+    company_id: str = Query(...),
+    hours: int = Query(24, ge=1, le=168),  # Default to last 24 hours, max 1 week
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Get recent mentions for a company within the last N hours."""
+    # Calculate time range
+    end_time = datetime.utcnow()
+    start_time = end_time - timedelta(hours=hours)
+    
+    # Get company Twitter account
+    company_twitter = twitter_crud.get_company_twitter_by_company(db, company_id)
+    if not company_twitter:
+        raise HTTPException(status_code=404, detail="Company Twitter account not found")
+    
+    # Get mentions in time range
+    mentions = twitter_crud.get_mentions_by_date_range(
+        db, company_twitter.id, start_time, end_time
+    )
+    
+    # Limit results
+    return mentions[:limit]
+
+
+# Twitter User Autocomplete Endpoints
+@router.post("/users/search", response_model=TwitterUserSearchResponse)
+async def search_twitter_users(
+    search_request: TwitterUserSearchRequest,
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Search for Twitter users with autocomplete functionality."""
+    try:
+        users = await twitter_service.search_users_autocomplete(
+            search_request.query, 
+            search_request.max_results
+        )
+        
+        return TwitterUserSearchResponse(
+            users=users,
+            query=search_request.query,
+            total_results=len(users)
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error searching users: {str(e)}")
+
+
+@router.post("/users/validate", response_model=TwitterHandleValidationResponse)
+async def validate_twitter_handle(
+    validation_request: TwitterHandleValidationRequest,
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Validate a Twitter handle and get suggestions if invalid."""
+    try:
+        validation_result = await twitter_service.validate_twitter_handle(
+            validation_request.handle
+        )
+        
+        return TwitterHandleValidationResponse(**validation_result)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error validating handle: {str(e)}")
+
+
+@router.get("/users/autocomplete")
+async def get_twitter_user_suggestions(
+    query: str = Query(..., min_length=2, description="Search query (minimum 2 characters)"),
+    max_results: int = Query(5, ge=1, le=20, description="Maximum number of results (default: 5 for free API)"),
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Get Twitter user suggestions for autocomplete (lightweight endpoint)."""
+    try:
+        if len(query.strip()) < 2:
+            return {"users": [], "query": query, "total_results": 0}
+        
+        users = await twitter_service.search_users_autocomplete(query.strip(), max_results)
+        
+        return {
+            "users": users,
+            "query": query,
+            "total_results": len(users)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting suggestions: {str(e)}")
+
+
+@router.get("/users/quick-validate/{handle}")
+async def quick_validate_handle(
+    handle: str,
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Quick validation of a Twitter handle (for real-time input validation)."""
+    try:
+        # Clean the handle
+        clean_handle = handle.lstrip("@").strip()
+        
+        if not clean_handle:
+            return {
+                "valid": False,
+                "error": "Handle cannot be empty",
+                "handle": handle
+            }
+        
+        # Quick check if handle exists
+        user_data = await twitter_service.get_user_by_username(clean_handle)
+        
+        if user_data:
+            return {
+                "valid": True,
+                "handle": clean_handle,
+                "exists": True,
+                "username": user_data.username,
+                "name": user_data.name,
+                "verified": user_data.verified,
+                "followers_count": user_data.followers_count
+            }
+        else:
+            return {
+                "valid": False,
+                "handle": clean_handle,
+                "exists": False,
+                "error": "Twitter handle not found"
+            }
+            
+    except Exception as e:
+        return {
+            "valid": False,
+            "error": f"Error validating handle: {str(e)}",
+            "handle": handle
+        }

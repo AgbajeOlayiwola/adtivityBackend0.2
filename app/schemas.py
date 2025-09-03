@@ -612,7 +612,7 @@ class CompanyTwitterBase(BaseModel):
 
 class CompanyTwitterCreate(CompanyTwitterBase):
     """Create company Twitter account schema."""
-    company_id: int
+    company_id: str  # UUID as string
 
 
 class CompanyTwitterUpdate(BaseModel):
@@ -622,8 +622,8 @@ class CompanyTwitterUpdate(BaseModel):
 
 class CompanyTwitterResponse(CompanyTwitterBase):
     """Company Twitter account response schema."""
-    id: int
-    company_id: int
+    id: str  # UUID as string
+    company_id: str  # UUID as string
     twitter_user_id: str | None = None
     followers_count: int
     following_count: int
@@ -650,8 +650,8 @@ class TwitterTweetBase(BaseModel):
 
 class TwitterTweetResponse(TwitterTweetBase):
     """Twitter tweet response schema."""
-    id: int
-    company_twitter_id: int
+    id: str  # UUID as string
+    company_twitter_id: str  # UUID as string
     hashtags: list = None
     mentions: list = None
     sentiment_score: float = None
@@ -675,70 +675,10 @@ class TwitterFollowerBase(BaseModel):
 
 class TwitterFollowerResponse(TwitterFollowerBase):
     """Twitter follower response schema."""
-    id: int
-    company_twitter_id: int
+    id: str  # UUID as string
+    company_twitter_id: str  # UUID as string
     profile_image_url: str = None
     followed_at: datetime = None
-    collected_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-class HashtagCampaignBase(BaseModel):
-    """Base hashtag campaign schema."""
-    hashtag: str
-    campaign_name: str
-    description: str = None
-    start_date: datetime
-    end_date: datetime = None
-    target_mentions: int = 0
-
-
-class HashtagCampaignCreate(HashtagCampaignBase):
-    """Create hashtag campaign schema."""
-    company_id: int
-
-
-class HashtagCampaignUpdate(BaseModel):
-    """Update hashtag campaign schema."""
-    campaign_name: str = None
-    description: str = None
-    end_date: datetime = None
-    is_active: bool = None
-    target_mentions: int = None
-
-
-class HashtagCampaignResponse(HashtagCampaignBase):
-    """Hashtag campaign response schema."""
-    id: int
-    company_id: int
-    is_active: bool
-    current_mentions: int
-    created_at: datetime
-    
-    class Config:
-        from_attributes = True
-
-
-class HashtagMentionBase(BaseModel):
-    """Base hashtag mention schema."""
-    tweet_id: str
-    user_id: str
-    username: str
-    text: str
-    created_at: datetime
-    retweet_count: int = 0
-    like_count: int = 0
-    reply_count: int = 0
-
-
-class HashtagMentionResponse(HashtagMentionBase):
-    """Hashtag mention response schema."""
-    id: int
-    campaign_id: int
-    sentiment_score: float = None
-    sentiment_label: str = None
     collected_at: datetime
     
     class Config:
@@ -761,8 +701,8 @@ class TwitterAnalyticsBase(BaseModel):
 
 class TwitterAnalyticsResponse(TwitterAnalyticsBase):
     """Twitter analytics response schema."""
-    id: int
-    company_twitter_id: int
+    id: str  # UUID as string
+    company_twitter_id: str  # UUID as string
     created_at: datetime
     
     class Config:
@@ -785,7 +725,7 @@ class TwitterProfileData(BaseModel):
 
 class TwitterSyncRequest(BaseModel):
     """Request to sync Twitter data."""
-    company_id: int
+    company_id: str  # UUID as string
     twitter_handle: str
     sync_tweets: bool = True
     sync_followers: bool = True
@@ -800,4 +740,144 @@ class TwitterSyncResponse(BaseModel):
     profile_updated: bool = False
     tweets_synced: int = 0
     followers_synced: int = 0
-    errors: list = []
+    errors: List[str] = []
+
+
+# New Mention-related Schemas
+class MentionBase(BaseModel):
+    """Base mention schema."""
+    tweet_id: str
+    username: str
+    text: str
+    created_at: datetime
+    retweet_count: int = 0
+    like_count: int = 0
+    reply_count: int = 0
+
+
+class MentionResponse(MentionBase):
+    """Mention response schema."""
+    id: str  # UUID as string
+    company_twitter_id: str  # UUID as string
+    sentiment_score: float = None
+    sentiment_label: str = None
+    collected_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class MentionAnalyticsBase(BaseModel):
+    """Base mention analytics schema."""
+    start_date: date
+    end_date: date
+    total_mentions: int = 0
+    total_likes: int = 0
+    total_retweets: int = 0
+    total_replies: int = 0
+
+
+class MentionAnalyticsResponse(MentionAnalyticsBase):
+    """Mention analytics response schema."""
+    mentions_by_date: Dict[str, Dict[str, int]] = {}
+    date_range: Dict[str, date] = {}
+    
+    class Config:
+        from_attributes = True
+
+
+class MentionSearchRequest(BaseModel):
+    """Request to search for mentions."""
+    company_id: str  # UUID as string
+    twitter_handle: str = None
+    start_date: datetime = None
+    end_date: datetime = None
+    limit: int = 100
+    include_sentiment: bool = False
+
+
+class MentionNotificationRequest(BaseModel):
+    """Request to set up mention notifications."""
+    company_id: str  # UUID as string
+    twitter_handle: str
+    notification_email: str = None
+    notification_webhook: str = None
+    mention_keywords: List[str] = []
+    is_active: bool = True
+
+
+# Twitter User Autocomplete Schemas
+class TwitterUserSuggestion(BaseModel):
+    """Twitter user suggestion for autocomplete."""
+    id: str
+    username: str
+    name: str
+    description: str = ""
+    profile_image_url: str = None
+    verified: bool = False
+    followers_count: int = 0
+    following_count: int = 0
+    tweets_count: int = 0
+    created_at: str = None
+    display_name: str
+    verified_badge: str = ""
+
+
+class TwitterHandleValidationRequest(BaseModel):
+    """Request to validate a Twitter handle."""
+    handle: str
+
+
+class TwitterHandleValidationResponse(BaseModel):
+    """Response for Twitter handle validation."""
+    valid: bool
+    handle: str
+    error: str = None
+    user_data: Optional[TwitterProfileData] = None
+    suggestions: List[TwitterUserSuggestion] = []
+
+
+class TwitterUserSearchRequest(BaseModel):
+    """Request to search for Twitter users."""
+    query: str
+    max_results: int = 5
+
+
+class TwitterUserSearchResponse(BaseModel):
+    """Response for Twitter user search."""
+    users: List[TwitterUserSuggestion]
+    query: str
+    total_results: int
+
+# Hashtag Mention schemas
+class HashtagMentionBase(BaseModel):
+    """Base hashtag mention schema."""
+    hashtag: str
+    tweet_id: str
+    username: str
+    text: str
+    created_at: datetime
+    engagement: int = 0
+
+
+class HashtagMentionResponse(HashtagMentionBase):
+    """Hashtag mention response schema."""
+    id: str  # UUID as string
+    company_id: str  # UUID as string
+    collected_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+# Hashtag Search schemas
+class HashtagSearchRequest(BaseModel):
+    """Request to search for tweets with a hashtag."""
+    hashtag: str = Field(..., description="Hashtag to search for (with or without #)")
+    max_results: int = Field(10, ge=10, le=100, description="Maximum number of results (10-100 for Twitter API v2)")
+
+
+class HashtagSearchResponse(BaseModel):
+    """Response for hashtag search."""
+    hashtag: str
+    results_count: int
+    tweets: List[Dict[str, Any]]
