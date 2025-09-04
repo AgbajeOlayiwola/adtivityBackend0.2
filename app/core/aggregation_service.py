@@ -169,7 +169,7 @@ class AggregationService:
             # Check if this user already has events today (simplified check)
             existing_events = self.db.query(RawEvent).filter(
                 and_(
-                    RawEvent.client_company_id == company_id,
+                    RawEvent.company_id == company_id,
                     RawEvent.campaign_id == campaign_id,
                     func.date(RawEvent.timestamp) == event_date,
                     or_(
@@ -269,7 +269,7 @@ class AggregationService:
             # Check if this user already has events this hour (simplified check)
             existing_events = self.db.query(RawEvent).filter(
                 and_(
-                    RawEvent.client_company_id == company_id,
+                    RawEvent.company_id == company_id,
                     RawEvent.campaign_id == campaign_id,
                     func.date_trunc('hour', RawEvent.timestamp) == func.date_trunc('hour', event_timestamp),
                     or_(
