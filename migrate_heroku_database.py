@@ -127,8 +127,8 @@ def migrate_heroku_data():
                     "event_name": event.event_name,
                     "event_type": "web3_event",
                     "user_id": event.user_id,
-                    "anonymous_id": event.anonymous_id,
-                    "session_id": event.session_id,
+                    "anonymous_id": None,  # Web3Event doesn't have anonymous_id
+                    "session_id": None,    # Web3Event doesn't have session_id
                     "properties": event.properties or {},
                     "country": event.country,
                     "region": event.region,
