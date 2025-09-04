@@ -23,7 +23,7 @@ class UnifiedAnalyticsService:
     def get_company_subscription_plan(self, company_id: str) -> Optional[SubscriptionPlan]:
         """Get the subscription plan for a company."""
         return self.db.query(SubscriptionPlan).filter(
-            SubscriptionPlan.company_id == company_id
+            SubscriptionPlan.company_id == uuid.UUID(company_id)
         ).first()
     
     def get_default_plan(self) -> SubscriptionPlan:
@@ -73,7 +73,7 @@ class UnifiedAnalyticsService:
             if is_web3_event:
                 # Store as Web3Event
                 web3_event = Web3Event(
-                    client_company_id=company_id,
+                    client_company_id=uuid.UUID(company_id),
                     user_id=event_data.get("user_id", ""),
                     event_name=event_data.get("event_name", "unknown"),
                     wallet_address=event_data.get("wallet_address", ""),
@@ -91,7 +91,7 @@ class UnifiedAnalyticsService:
             else:
                 # Store as regular Event
                 event = Event(
-                    client_company_id=company_id,
+                    client_company_id=uuid.UUID(company_id),
                     event_name=event_data.get("event_name", "unknown"),
                     event_type=event_data.get("type", "unknown"),
                     user_id=event_data.get("user_id"),
@@ -154,7 +154,7 @@ class UnifiedAnalyticsService:
         # Query raw events for session data
         raw_events = self.db.query(RawEvent).filter(
             and_(
-                RawEvent.company_id == company_id,
+                RawEvent.company_id == uuid.UUID(company_id),
                 RawEvent.event_timestamp >= start_date,
                 RawEvent.event_timestamp <= end_date,
                 RawEvent.session_id.isnot(None),
@@ -192,7 +192,7 @@ class UnifiedAnalyticsService:
         # Query hourly aggregations
         hourly_data = self.db.query(CampaignAnalyticsHourly).filter(
             and_(
-                CampaignAnalyticsHourly.company_id == company_id,
+                CampaignAnalyticsHourly.company_id == uuid.UUID(company_id),
                 CampaignAnalyticsHourly.analytics_date >= start_date.date(),
                 CampaignAnalyticsHourly.analytics_date <= end_date.date()
             )
@@ -213,7 +213,7 @@ class UnifiedAnalyticsService:
         # Query daily aggregations
         daily_data = self.db.query(CampaignAnalyticsDaily).filter(
             and_(
-                CampaignAnalyticsDaily.company_id == company_id,
+                CampaignAnalyticsDaily.company_id == uuid.UUID(company_id),
                 CampaignAnalyticsDaily.analytics_date >= start_date.date(),
                 CampaignAnalyticsDaily.analytics_date <= end_date.date()
             )
@@ -242,7 +242,7 @@ class UnifiedAnalyticsService:
         """Get events from raw data (Enterprise plan)."""
         events = self.db.query(RawEvent).filter(
             and_(
-                RawEvent.company_id == company_id,
+                RawEvent.company_id == uuid.UUID(company_id),
                 RawEvent.event_timestamp >= start_date,
                 RawEvent.event_timestamp <= end_date
             )
@@ -258,7 +258,7 @@ class UnifiedAnalyticsService:
         """Get events from hourly aggregation (Pro plan)."""
         hourly_data = self.db.query(CampaignAnalyticsHourly).filter(
             and_(
-                CampaignAnalyticsHourly.company_id == company_id,
+                CampaignAnalyticsHourly.company_id == uuid.UUID(company_id),
                 CampaignAnalyticsHourly.analytics_date >= start_date.date(),
                 CampaignAnalyticsHourly.analytics_date <= end_date.date()
             )
@@ -275,7 +275,7 @@ class UnifiedAnalyticsService:
         """Get events from daily aggregation (Basic plan)."""
         daily_data = self.db.query(CampaignAnalyticsDaily).filter(
             and_(
-                CampaignAnalyticsDaily.company_id == company_id,
+                CampaignAnalyticsDaily.company_id == uuid.UUID(company_id),
                 CampaignAnalyticsDaily.analytics_date >= start_date.date(),
                 CampaignAnalyticsDaily.analytics_date <= end_date.date()
             )
@@ -301,7 +301,7 @@ class UnifiedAnalyticsService:
         """Get regions from raw data (Enterprise plan)."""
         events = self.db.query(RawEvent).filter(
             and_(
-                RawEvent.company_id == company_id,
+                RawEvent.company_id == uuid.UUID(company_id),
                 RawEvent.event_timestamp >= start_date,
                 RawEvent.event_timestamp <= end_date,
                 RawEvent.country.isnot(None)
@@ -330,7 +330,7 @@ class UnifiedAnalyticsService:
         """Get regions from hourly aggregation (Pro plan)."""
         hourly_data = self.db.query(CampaignAnalyticsHourly).filter(
             and_(
-                CampaignAnalyticsHourly.company_id == company_id,
+                CampaignAnalyticsHourly.company_id == uuid.UUID(company_id),
                 CampaignAnalyticsHourly.analytics_date >= start_date.date(),
                 CampaignAnalyticsHourly.analytics_date <= end_date.date()
             )
@@ -353,7 +353,7 @@ class UnifiedAnalyticsService:
         """Get regions from daily aggregation (Basic plan)."""
         daily_data = self.db.query(CampaignAnalyticsDaily).filter(
             and_(
-                CampaignAnalyticsDaily.company_id == company_id,
+                CampaignAnalyticsDaily.company_id == uuid.UUID(company_id),
                 CampaignAnalyticsDaily.analytics_date >= start_date.date(),
                 CampaignAnalyticsDaily.analytics_date <= end_date.date()
             )
@@ -385,7 +385,7 @@ class UnifiedAnalyticsService:
         """Get unique users from raw data (Enterprise plan)."""
         events = self.db.query(RawEvent).filter(
             and_(
-                RawEvent.company_id == company_id,
+                RawEvent.company_id == uuid.UUID(company_id),
                 RawEvent.event_timestamp >= start_date,
                 RawEvent.event_timestamp <= end_date,
                 RawEvent.session_id.isnot(None),
@@ -407,7 +407,7 @@ class UnifiedAnalyticsService:
         """Get unique users from hourly aggregation (Pro plan)."""
         hourly_data = self.db.query(CampaignAnalyticsHourly).filter(
             and_(
-                CampaignAnalyticsHourly.company_id == company_id,
+                CampaignAnalyticsHourly.company_id == uuid.UUID(company_id),
                 CampaignAnalyticsHourly.analytics_date >= start_date.date(),
                 CampaignAnalyticsHourly.analytics_date <= end_date.date()
             )
@@ -427,7 +427,7 @@ class UnifiedAnalyticsService:
         """Get unique users from daily aggregation (Basic plan)."""
         daily_data = self.db.query(CampaignAnalyticsDaily).filter(
             and_(
-                CampaignAnalyticsDaily.company_id == company_id,
+                CampaignAnalyticsDaily.company_id == uuid.UUID(company_id),
                 CampaignAnalyticsDaily.analytics_date >= start_date.date(),
                 CampaignAnalyticsDaily.analytics_date <= end_date.date()
             )

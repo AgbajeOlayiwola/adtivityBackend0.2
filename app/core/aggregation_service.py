@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 import json
 import time
+import uuid
 
 from ..models import (
     RawEvent, CampaignAnalyticsDaily, CampaignAnalyticsHourly, 
@@ -26,7 +27,7 @@ class AggregationService:
     def get_company_subscription_plan(self, company_id: str) -> Optional[SubscriptionPlan]:
         """Get the subscription plan for a company."""
         return self.db.query(SubscriptionPlan).filter(
-            SubscriptionPlan.company_id == company_id
+            SubscriptionPlan.company_id == uuid.UUID(company_id)
         ).first()
     
     def get_default_plan(self) -> SubscriptionPlan:
@@ -64,7 +65,7 @@ class AggregationService:
         raw_event_id = None
         if plan.plan_tier == 3:  # Enterprise
             raw_event = RawEvent(
-                company_id=company_id,
+                company_id=uuid.UUID(company_id),
                 campaign_id=campaign_id,
                 event_name=event_name,
                 event_type=event_type,
@@ -111,7 +112,7 @@ class AggregationService:
         # Get or create daily aggregation
         daily_agg = self.db.query(CampaignAnalyticsDaily).filter(
             and_(
-                CampaignAnalyticsDaily.company_id == company_id,
+                CampaignAnalyticsDaily.company_id == uuid.UUID(company_id),
                 CampaignAnalyticsDaily.campaign_id == campaign_id,
                 CampaignAnalyticsDaily.analytics_date == event_date
             )
@@ -119,7 +120,7 @@ class AggregationService:
         
         if not daily_agg:
             daily_agg = CampaignAnalyticsDaily(
-                company_id=company_id,
+                company_id=uuid.UUID(company_id),
                 campaign_id=campaign_id,
                 analytics_date=event_date
             )
@@ -171,7 +172,7 @@ class AggregationService:
                 and_(
                     RawEvent.company_id == company_id,
                     RawEvent.campaign_id == campaign_id,
-                    func.date(RawEvent.timestamp) == event_date,
+                    func.date(RawEvent.event_timestamp) == event_date,
                     or_(
                         RawEvent.user_id == user_id,
                         RawEvent.anonymous_id == user_id
@@ -211,7 +212,7 @@ class AggregationService:
         # Get or create hourly aggregation
         hourly_agg = self.db.query(CampaignAnalyticsHourly).filter(
             and_(
-                CampaignAnalyticsHourly.company_id == company_id,
+                CampaignAnalyticsHourly.company_id == uuid.UUID(company_id),
                 CampaignAnalyticsHourly.campaign_id == campaign_id,
                 CampaignAnalyticsHourly.analytics_date == event_date,
                 CampaignAnalyticsHourly.hour == event_hour
@@ -220,7 +221,7 @@ class AggregationService:
         
         if not hourly_agg:
             hourly_agg = CampaignAnalyticsHourly(
-                company_id=company_id,
+                company_id=uuid.UUID(company_id),
                 campaign_id=campaign_id,
                 analytics_date=event_date,
                 hour=event_hour
@@ -271,7 +272,7 @@ class AggregationService:
                 and_(
                     RawEvent.company_id == company_id,
                     RawEvent.campaign_id == campaign_id,
-                    func.date_trunc('hour', RawEvent.timestamp) == func.date_trunc('hour', event_timestamp),
+                    func.date_trunc('hour', RawEvent.event_timestamp) == func.date_trunc('hour', event_timestamp),
                     or_(
                         RawEvent.user_id == user_id,
                         RawEvent.anonymous_id == user_id
@@ -313,7 +314,7 @@ class AggregationService:
         # Get raw events for the period
         raw_events = self.db.query(RawEvent).filter(
             and_(
-                RawEvent.company_id == company_id,
+                RawEvent.company_id == uuid.UUID(company_id),
                 RawEvent.campaign_id == campaign_id,
                 RawEvent.event_timestamp >= start_date,
                 RawEvent.event_timestamp < end_date + timedelta(days=1)
@@ -396,7 +397,7 @@ class AggregationService:
         
         # Initialize aggregation
         daily_agg = CampaignAnalyticsDaily(
-            company_id=company_id,
+            company_id=uuid.UUID(company_id),
             campaign_id=campaign_id,
             analytics_date=event_date
         )
@@ -463,7 +464,7 @@ class AggregationService:
         
         # Initialize aggregation
         hourly_agg = CampaignAnalyticsHourly(
-            company_id=company_id,
+            company_id=uuid.UUID(company_id),
             campaign_id=campaign_id,
             analytics_date=event_date,
             hour=event_hour
@@ -532,7 +533,7 @@ class AggregationService:
         
         deleted_count = self.db.query(RawEvent).filter(
             and_(
-                RawEvent.company_id == company_id,
+                RawEvent.company_id == uuid.UUID(company_id),
                 RawEvent.event_timestamp < cutoff_date
             )
         ).delete()
