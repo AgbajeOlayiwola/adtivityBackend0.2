@@ -157,11 +157,31 @@ class AggregationService:
         # Update user metrics
         user_id = event_data.get("user_id") or event_data.get("anonymous_id")
         if user_id:
-            # Simple unique user tracking - just increment for now
-            # In production, use Redis or similar for proper unique user tracking
+            # Track unique users properly - check if this user is already counted
             if daily_agg.unique_users is None:
                 daily_agg.unique_users = 0
-            daily_agg.unique_users += 1
+            
+            # For real-time updates, we need to check if this user was already counted today
+            # This is a simplified approach - in production, use Redis or similar
+            # For now, we'll use a conservative approach and only increment if we haven't seen this user recently
+            # This is not perfect but better than counting every event as a unique user
+            
+            # Check if this user already has events today (simplified check)
+            existing_events = self.db.query(RawEvent).filter(
+                and_(
+                    RawEvent.client_company_id == company_id,
+                    RawEvent.campaign_id == campaign_id,
+                    func.date(RawEvent.timestamp) == event_date,
+                    or_(
+                        RawEvent.user_id == user_id,
+                        RawEvent.anonymous_id == user_id
+                    )
+                )
+            ).count()
+            
+            # Only increment if this is the first event from this user today
+            if existing_events == 1:  # This is the first event from this user today
+                daily_agg.unique_users += 1
         
         # Update conversion metrics if applicable
         if event_name in ["purchase", "signup", "conversion"]:
@@ -239,11 +259,29 @@ class AggregationService:
         # Update user metrics
         user_id = event_data.get("user_id") or event_data.get("anonymous_id")
         if user_id:
-            # Simple unique user tracking - just increment for now
-            # In production, use Redis or similar for proper unique user tracking
+            # Track unique users properly - check if this user is already counted
             if hourly_agg.unique_users is None:
                 hourly_agg.unique_users = 0
-            hourly_agg.unique_users += 1
+            
+            # For real-time updates, we need to check if this user was already counted this hour
+            # This is a simplified approach - in production, use Redis or similar
+            
+            # Check if this user already has events this hour (simplified check)
+            existing_events = self.db.query(RawEvent).filter(
+                and_(
+                    RawEvent.client_company_id == company_id,
+                    RawEvent.campaign_id == campaign_id,
+                    func.date_trunc('hour', RawEvent.timestamp) == func.date_trunc('hour', event_timestamp),
+                    or_(
+                        RawEvent.user_id == user_id,
+                        RawEvent.anonymous_id == user_id
+                    )
+                )
+            ).count()
+            
+            # Only increment if this is the first event from this user this hour
+            if existing_events == 1:  # This is the first event from this user this hour
+                hourly_agg.unique_users += 1
         
         # Update conversion metrics
         if event_name in ["purchase", "signup", "conversion"]:
