@@ -73,10 +73,10 @@ def migrate_web3_events():
                     "anonymous_id": None,  # Web3Event doesn't have this field
                     "session_id": None,    # Web3Event doesn't have this field
                     "properties": event.properties or {},
-                    "country": None,       # Web3Event doesn't have location fields
-                    "region": None,
-                    "city": None,
-                    "ip_address": None,
+                    "country": event.country,
+                    "region": event.region,
+                    "city": event.city,
+                    "ip_address": event.ip_address,
                     "timestamp": event.timestamp or datetime.now(timezone.utc),
                     "wallet_address": event.wallet_address,
                     "chain_id": event.chain_id
