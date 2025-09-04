@@ -359,16 +359,65 @@ class UnifiedAnalyticsService:
             )
         ).all()
         
-        # Aggregate country breakdowns
-        countries = {}
+        # Aggregate all region data (country, region, city)
+        regions = {}
         for data in daily_data:
-            for country, count in data.country_breakdown.items():
-                if country not in countries:
-                    countries[country] = {"country": country, "events": 0}
-                countries[country]["events"] += count
+            # Process city breakdown first (most specific)
+            for city, city_count in data.city_breakdown.items():
+                # Find matching country and region for this city
+                country = None
+                region = None
+                for c, c_count in data.country_breakdown.items():
+                    if c_count > 0:
+                        country = c
+                        break
+                for r, r_count in data.region_breakdown.items():
+                    if r_count > 0:
+                        region = r
+                        break
+                
+                key = f"{country}_{region}_{city}"
+                if key not in regions:
+                    regions[key] = {"country": country, "region": region, "city": city, "events": 0}
+                regions[key]["events"] += city_count
+            
+            # Process region breakdown (if no city data)
+            for region, region_count in data.region_breakdown.items():
+                # Find matching country for this region
+                country = None
+                for c, c_count in data.country_breakdown.items():
+                    if c_count > 0:
+                        country = c
+                        break
+                
+                # Only add if we don't already have city data for this region
+                has_city_data = any(
+                    r.get("region") == region and r.get("city") is not None 
+                    for r in regions.values()
+                )
+                
+                if not has_city_data:
+                    key = f"{country}_{region}"
+                    if key not in regions:
+                        regions[key] = {"country": country, "region": region, "city": None, "events": 0}
+                    regions[key]["events"] += region_count
+            
+            # Process country breakdown (if no region/city data)
+            for country, country_count in data.country_breakdown.items():
+                # Only add if we don't already have region/city data for this country
+                has_region_data = any(
+                    r.get("country") == country and (r.get("region") is not None or r.get("city") is not None)
+                    for r in regions.values()
+                )
+                
+                if not has_region_data:
+                    key = f"{country}"
+                    if key not in regions:
+                        regions[key] = {"country": country, "region": None, "city": None, "events": 0}
+                    regions[key]["events"] += country_count
         
         return {
-            "regions": list(countries.values()),
+            "regions": list(regions.values()),
             "data_source": "daily_aggregation"
         }
     
