@@ -130,7 +130,7 @@ class PasswordResetToken(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, nullable=False, index=True)
-    token = Column(String, nullable=False, unique=True, index=True)
+    token_hash = Column(String, nullable=False, unique=True, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
@@ -365,203 +365,159 @@ class PlatformMetrics(Base):
     client_company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False)
 
 # ====================================================================================
-# --- Twitter Integration Models ---
+# --- Data Aggregation Models ---
 # ====================================================================================
 
-# class TwitterAccount(Base):
-#     """Twitter account connection and basic info."""
-#     __tablename__ = "twitter_accounts"
-#     
-#     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-#     platform_user_id = Column(UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=False)
-#     twitter_user_id = Column(String, unique=True, nullable=False)  # Twitter's internal user ID
-#     username = Column(String, unique=True, nullable=False)  # @username
-#     display_name = Column(String)
-#     bio = Column(Text)
-#     profile_image_url = Column(String)
-#     verified = Column(Boolean, default=False)
-#     followers_count = Column(Integer, default=0)
-#     following_count = Column(Integer, default=0)
-#     tweet_count = Column(Integer, default=0)
-#     access_token = Column(String, nullable=False)
-#     refresh_token = Column(String)
-#     token_expires_at = Column(DateTime(timezone=True))
-#     is_active = Column(Boolean, default=True)
-#     created_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
-#     updated_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-#     
-#     # Relationships
-#     # platform_user = relationship("PlatformUser", back_populates="twitter_accounts")
-#     # hashtag_campaigns = relationship("HashtagCampaign", back_populates="twitter_account")
-#     # followers = relationship("TwitterFollower", back_populates="twitter_account")
-#     # tweets = relationship("TwitterTweet", back_populates="twitter_account")
-# 
-# class HashtagCampaign(Base):
-#     """Hashtags that organizations want to track."""
-#     __tablename__ = "hashtag_campaigns"
-#     
-#     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-#     twitter_account_id = Column(UUID(as_uuid=True), ForeignKey("twitter_accounts.id"), nullable=False)
-#     hashtag = Column(String, nullable=False)  # e.g., "#YourBrand"
-#     name = Column(String, nullable=False)  # Campaign name
-#     description = Column(Text)
-#     is_active = Column(Boolean, default=True)
-#     track_mentions = Column(Boolean, default=True)
-#     track_sentiment = Column(Boolean, default=True)
-#     alert_on_negative = Column(Boolean, default=True)
-#     created_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
-#     updated_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-#     
-#     # Relationships
-#     # twitter_account = relationship("TwitterAccount", back_populates="hashtag_campaigns")
-#     # mentions = relationship("HashtagMention", back_populates="campaign")
-#     
-#     # Composite unique constraint
-#     # __table_args__ = (UniqueConstraint('twitter_account_id', 'hashtag', name='uq_hashtag_campaign'),)
-# 
-# class HashtagMention(Base):
-#     """Individual mentions of tracked hashtags."""
-#     __tablename__ = "hashtag_mentions"
-#     
-#     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-#     campaign_id = Column(UUID(as_uuid=True), ForeignKey("hashtag_campaigns.id"), nullable=False)
-#     tweet_id = Column(String, nullable=False)  # Twitter's tweet ID
-#     author_username = Column(String, nullable=False)
-#     author_display_name = Column(String)
-#     author_followers_count = Column(Integer)
-#     author_verified = Column(Boolean, default=False)
-#     tweet_text = Column(Text, nullable=False)
-#     tweet_created_at = Column(DateTime(timezone=True), nullable=False)
-#     likes_count = Column(Integer, default=0)
-#     retweets_count = Column(Integer, default=0)
-#     replies_count = Column(Integer, default=0)
-#     sentiment_score = Column(Float)  # -1 to 1 (negative to positive)
-#     sentiment_label = Column(String)  # "positive", "negative", "neutral"
-#     location = Column(String)
-#     language = Column(String)
-#     collected_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
-#     
-#     # Relationships
-#     # campaign = relationship("HashtagCampaign", back_populates="mentions")
-#     
-#     # Indexes for performance
-#     # __table_args__ = (
-#     #     Index('idx_hashtag_mentions_tweet_id', 'tweet_id'),
-#     #     Index('idx_hashtag_mentions_author', 'author_username'),
-#     #     Index('idx_hashtag_mentions_sentiment', 'sentiment_score'),
-#     #     Index('idx_hashtag_mentions_created', 'tweet_created_at'),
-#     # )
-# 
-# class TwitterFollower(Base):
-#     """Follower data and growth tracking."""
-#     __tablename__ = "twitter_followers"
-#     
-#     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-#     twitter_account_id = Column(UUID(as_uuid=True), ForeignKey("twitter_accounts.id"), nullable=False)
-#     follower_username = Column(String, nullable=False)
-#     follower_display_name = Column(String)
-#     follower_bio = Column(Text)
-#     follower_location = Column(String)
-#     follower_verified = Column(Boolean, default=False)
-#     follower_followers_count = Column(Integer)
-#     follower_following_count = Column(Integer)
-#     follower_tweet_count = Column(Integer)
-#     follower_profile_image_url = Column(String)
-#     followed_at = Column(DateTime(timezone=True), nullable=False)  # When they started following
-#     is_active = Column(Boolean, default=True)  # Still following
-#     unfollowed_at = Column(DateTime(timezone=True))  # When they unfollowed
-#     collected_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
-#     
-#     # Relationships
-#     # twitter_account = relationship("TwitterAccount", back_populates="followers")
-#     
-#     # Indexes for performance
-#     # __table_args__ = (
-#     #     Index('idx_twitter_followers_username', 'follower_username'),
-#     #     Index('idx_twitter_followers_followed_at', 'followed_at'),
-#     #     Index('idx_twitter_followers_active', 'is_active'),
-#     # )
-# 
-# class TwitterTweet(Base):
-#     """Tweet data and performance metrics."""
-#     __tablename__ = "twitter_tweets"
-#     
-#     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-#     twitter_account_id = Column(UUID(as_uuid=True), ForeignKey("twitter_accounts.id"), nullable=False)
-#     tweet_id = Column(String, unique=True, nullable=False)  # Twitter's tweet ID
-#     tweet_text = Column(Text, nullable=False)
-#     tweet_type = Column(String, default="tweet")  # tweet, retweet, reply, quote
-#     in_reply_to_tweet_id = Column(String)  # If this is a reply
-#     quoted_tweet_id = Column(String)  # If this quotes another tweet
-#     retweeted_tweet_id = Column(String)  # If this is a retweet
-#     hashtags = Column(JSON)  # Array of hashtags used
-#     mentions = Column(JSON)  # Array of @mentions
-#     urls = Column(JSON)  # Array of URLs in the tweet
-#     media_urls = Column(JSON)  # Array of media URLs
-#     tweet_created_at = Column(DateTime(timezone=True), nullable=False)
-#     likes_count = Column(Integer, default=0)
-#     retweets_count = Column(Integer, default=0)
-#     replies_count = Column(Integer, default=0)
-#     quote_count = Column(Integer, default=0)
-#     bookmark_count = Column(Integer, default=0)
-#     impression_count = Column(Integer, default=0)
-#     engagement_rate = Column(Float)  # Calculated engagement rate
-#     collected_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
-#     updated_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-#     
-#     # Relationships
-#     # twitter_account = relationship("TwitterAccount", back_populates="tweets")
-#     
-#     # Indexes for performance
-#     # __table_args__ = (
-#     #     Index('idx_twitter_tweets_tweet_id', 'tweet_id'),
-#     #     Index('idx_twitter_tweets_created', 'tweet_created_at'),
-#     #     Index('idx_twitter_tweets_engagement', 'engagement_rate'),
-#     #     Index('idx_twitter_tweets_type', 'tweet_type'),
-#     # )
-# 
-# class TwitterAnalytics(Base):
-#     """Aggregated Twitter analytics data."""
-#     __tablename__ = "twitter_analytics"
-#     
-#     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-#     twitter_account_id = Column(UUID(as_uuid=True), ForeignKey("twitter_accounts.id"), nullable=False)
-#     date = Column(Date, nullable=False)  # Analytics date
-#     period = Column(String, default="daily")  # daily, weekly, monthly
-#     
-#     # Follower metrics
-#     followers_count = Column(Integer, default=0)
-#     followers_gained = Column(Integer, default=0)
-#     followers_lost = Column(Integer, default=0)
-#     net_followers = Column(Integer, default=0)
-#     
-#     # Tweet metrics
-#     tweets_count = Column(Integer, default=0)
-#     total_likes = Column(Integer, default=0)
-#     total_retweets = Column(Integer, default=0)
-#     total_replies = Column(Integer, default=0)
-#     total_impressions = Column(Integer, default=0)
-#     avg_engagement_rate = Column(Float, default=0.0)
-#     
-#     # Hashtag metrics
-#     hashtags_tracked = Column(Integer, default=0)
-#     hashtag_mentions = Column(Integer, default=0)
-#     avg_sentiment_score = Column(Float, default=0.0)
-#     
-#     # Performance metrics
-#     best_tweet_id = Column(String)
-#     best_tweet_engagement = Column(Float)
-#     peak_hour = Column(Integer)  # Hour of day with most engagement
-#     peak_day = Column(Integer)   # Day of week with most engagement
-#     
-#     created_at = Column(DateTime(timezone=True), default=datetime.now(timezone.utc))
-#     
-#     # Relationships
-#     # twitter_account = relationship("TwitterAccount")
-#     
-#     # Composite unique constraint
-#     # __table_args__ = (
-#     #     UniqueConstraint('twitter_account_id', 'date', 'period', name='uq_twitter_analytics'),
-#     #     Index('idx_twitter_analytics_date', 'date'),
-#     #     Index('idx_twitter_analytics_period', 'period'),
-#     # )
+class RawEvent(Base):
+    """Raw event storage for Enterprise customers - full granularity."""
+    __tablename__ = "raw_events"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    campaign_id = Column(String, nullable=False, index=True)
+    event_name = Column(String, nullable=False, index=True)
+    event_type = Column(String, nullable=False, index=True)
+    user_id = Column(String, index=True)
+    anonymous_id = Column(String, index=True)
+    session_id = Column(String, index=True)
+    
+    # Full event properties
+    properties = Column(JSON, default={})
+    
+    # Geographic data
+    country = Column(String(2), index=True)
+    region = Column(String(100), index=True)
+    city = Column(String(100), index=True)
+    ip_address = Column(String(45), index=True)
+    
+    # Timestamps
+    event_timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    received_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    company = relationship("ClientCompany")
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_raw_events_company_campaign', 'company_id', 'campaign_id'),
+        Index('idx_raw_events_timestamp', 'event_timestamp'),
+        Index('idx_raw_events_type_name', 'event_type', 'event_name'),
+    )
+
+
+class CampaignAnalyticsDaily(Base):
+    """Daily aggregated analytics for Basic Plan customers."""
+    __tablename__ = "campaign_analytics_daily"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    campaign_id = Column(String, nullable=False, index=True)
+    analytics_date = Column(Date, nullable=False, index=True)
+    
+    # Event counts by type
+    event_counts = Column(JSON, default={})  # {"page_view": 1500, "purchase": 45, "signup": 23}
+    
+    # Geographic aggregation
+    country_breakdown = Column(JSON, default={})  # {"US": 1200, "UK": 300}
+    region_breakdown = Column(JSON, default={})
+    city_breakdown = Column(JSON, default={})
+    
+    # User metrics
+    unique_users = Column(Integer, default=0)
+    new_users = Column(Integer, default=0)
+    returning_users = Column(Integer, default=0)
+    
+    # Conversion metrics
+    conversion_rate = Column(Float, default=0.0)
+    campaign_revenue_usd = Column(Float, default=0.0)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    company = relationship("ClientCompany")
+    
+    # Composite unique constraint
+    __table_args__ = (
+        UniqueConstraint('company_id', 'campaign_id', 'analytics_date', name='unique_campaign_daily'),
+        Index('idx_campaign_daily_date', 'analytics_date'),
+        Index('idx_campaign_daily_campaign', 'campaign_id'),
+    )
+
+
+class CampaignAnalyticsHourly(Base):
+    """Hourly aggregated analytics for Pro Plan customers."""
+    __tablename__ = "campaign_analytics_hourly"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    campaign_id = Column(String, nullable=False, index=True)
+    analytics_date = Column(Date, nullable=False, index=True)
+    hour = Column(Integer, nullable=False, index=True)  # 0-23
+    
+    # Event counts by type (hourly)
+    event_counts = Column(JSON, default={})
+    
+    # Geographic aggregation (hourly)
+    country_breakdown = Column(JSON, default={})
+    region_breakdown = Column(JSON, default={})
+    city_breakdown = Column(JSON, default={})
+    
+    # User metrics (hourly)
+    unique_users = Column(Integer, default=0)
+    new_users = Column(Integer, default=0)
+    returning_users = Column(Integer, default=0)
+    
+    # Conversion metrics (hourly)
+    conversion_rate = Column(Float, default=0.0)
+    campaign_revenue_usd = Column(Float, default=0.0)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    company = relationship("ClientCompany")
+    
+    # Composite unique constraint
+    __table_args__ = (
+        UniqueConstraint('company_id', 'campaign_id', 'analytics_date', 'hour', name='unique_campaign_hourly'),
+        Index('idx_campaign_hourly_datetime', 'analytics_date', 'hour'),
+        Index('idx_campaign_hourly_campaign', 'campaign_id'),
+    )
+
+
+class SubscriptionPlan(Base):
+    """Customer subscription plans for data aggregation tiers."""
+    __tablename__ = "subscription_plans"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    
+    # Plan details
+    plan_name = Column(String, nullable=False)  # "basic", "pro", "enterprise"
+    plan_tier = Column(Integer, nullable=False)  # 1=basic, 2=pro, 3=enterprise
+    
+    # Data retention settings
+    raw_data_retention_days = Column(Integer, default=0)  # 0 = no raw data
+    aggregation_frequency = Column(String, default="daily")  # "daily", "hourly", "real_time"
+    
+    # Storage limits
+    max_raw_events_per_month = Column(Integer, default=0)
+    max_aggregated_rows_per_month = Column(Integer, default=100000)
+    
+    # Pricing
+    monthly_price_usd = Column(Float, default=0.0)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    company = relationship("ClientCompany")
+    
+    # Composite unique constraint
+    __table_args__ = (
+        UniqueConstraint('company_id', 'plan_name', name='unique_company_plan'),
+    )
