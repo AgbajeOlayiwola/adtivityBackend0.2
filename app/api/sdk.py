@@ -94,7 +94,7 @@ async def receive_sdk_event(
             # Convert payload to event data format
             event_data = {
                 "campaign_id": "default",  # You can extract this from payload if needed
-                "event_name": payload.event_name,
+                "event_name": payload.eventName or "unknown",
                 "event_type": payload.type,
                 "user_id": payload.user_id,
                 "anonymous_id": payload.anonymous_id,
