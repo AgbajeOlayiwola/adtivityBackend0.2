@@ -51,6 +51,7 @@ app.add_middleware(
         "http://localhost:3001",        # Local development
         "http://localhost:8080",        # Local development
         "http://localhost:9999",        # Local development
+        "http://localhost:3002", 
     ],
     sdk_paths=["/sdk/", "/sdk/event", "/sdk/events"]
 )
