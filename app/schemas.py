@@ -4,6 +4,7 @@ from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, date
 from enum import Enum
 import uuid
+from decimal import Decimal
 
 # ====================================================================================
 # --- Enums: Defines fixed sets of choices for specific fields. ---
@@ -881,3 +882,152 @@ class HashtagSearchResponse(BaseModel):
     hashtag: str
     results_count: int
     tweets: List[Dict[str, Any]]
+
+# ====================================================================================
+# --- Data Aggregation Schemas ---
+# ====================================================================================
+
+class SubscriptionPlanBase(BaseModel):
+    """Base subscription plan schema."""
+    plan_name: str = Field(..., description="Plan name: basic, pro, or enterprise")
+    plan_tier: int = Field(..., ge=1, le=3, description="Plan tier: 1=basic, 2=pro, 3=enterprise")
+    raw_data_retention_days: int = Field(0, ge=0, description="Days to retain raw data (0 = no raw data)")
+    aggregation_frequency: str = Field("daily", description="Aggregation frequency: daily, hourly, real_time")
+    max_raw_events_per_month: int = Field(0, ge=0, description="Maximum raw events per month")
+    max_aggregated_rows_per_month: int = Field(100000, ge=1000, description="Maximum aggregated rows per month")
+    monthly_price_usd: float = Field(0.0, ge=0.0, description="Monthly price in USD")
+
+class SubscriptionPlanCreate(SubscriptionPlanBase):
+    """Schema for creating a subscription plan."""
+    pass
+
+class SubscriptionPlanUpdate(BaseModel):
+    """Schema for updating a subscription plan."""
+    plan_name: Optional[str] = None
+    plan_tier: Optional[int] = Field(None, ge=1, le=3)
+    raw_data_retention_days: Optional[int] = Field(None, ge=0)
+    aggregation_frequency: Optional[str] = None
+    max_raw_events_per_month: Optional[int] = Field(None, ge=0)
+    max_aggregated_rows_per_month: Optional[int] = Field(None, ge=1000)
+    monthly_price_usd: Optional[float] = Field(None, ge=0.0)
+
+class SubscriptionPlanResponse(SubscriptionPlanBase):
+    """Schema for subscription plan response."""
+    id: uuid.UUID
+    company_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class RawEventBase(BaseModel):
+    """Base raw event schema."""
+    campaign_id: str = Field(..., description="Campaign identifier")
+    event_name: str = Field(..., description="Event name")
+    event_type: str = Field(..., description="Event type")
+    user_id: Optional[str] = None
+    anonymous_id: Optional[str] = None
+    session_id: Optional[str] = None
+    properties: Dict[str, Any] = Field(default_factory=dict)
+    country: Optional[str] = None
+    region: Optional[str] = None
+    city: Optional[str] = None
+    ip_address: Optional[str] = None
+    event_timestamp: datetime = Field(..., description="When the event occurred")
+
+class RawEventCreate(RawEventBase):
+    """Schema for creating a raw event."""
+    pass
+
+class RawEventResponse(RawEventBase):
+    """Schema for raw event response."""
+    id: uuid.UUID
+    company_id: uuid.UUID
+    received_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CampaignAnalyticsDailyBase(BaseModel):
+    """Base daily analytics schema."""
+    campaign_id: str = Field(..., description="Campaign identifier")
+    analytics_date: date = Field(..., description="Analytics date")
+    event_counts: Dict[str, int] = Field(default_factory=dict)
+    country_breakdown: Dict[str, int] = Field(default_factory=dict)
+    region_breakdown: Dict[str, int] = Field(default_factory=dict)
+    city_breakdown: Dict[str, int] = Field(default_factory=dict)
+    unique_users: int = Field(0, ge=0)
+    new_users: int = Field(0, ge=0)
+    returning_users: int = Field(0, ge=0)
+    conversion_rate: float = Field(0.0, ge=0.0, le=1.0)
+    campaign_revenue_usd: float = Field(0.0, ge=0.0)
+
+class CampaignAnalyticsDailyCreate(CampaignAnalyticsDailyBase):
+    """Schema for creating daily analytics."""
+    pass
+
+class CampaignAnalyticsDailyResponse(CampaignAnalyticsDailyBase):
+    """Schema for daily analytics response."""
+    id: uuid.UUID
+    company_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CampaignAnalyticsHourlyBase(BaseModel):
+    """Base hourly analytics schema."""
+    campaign_id: str = Field(..., description="Campaign identifier")
+    analytics_date: date = Field(..., description="Analytics date")
+    hour: int = Field(..., ge=0, le=23, description="Hour of day (0-23)")
+    event_counts: Dict[str, int] = Field(default_factory=dict)
+    country_breakdown: Dict[str, int] = Field(default_factory=dict)
+    region_breakdown: Dict[str, int] = Field(default_factory=dict)
+    city_breakdown: Dict[str, int] = Field(default_factory=dict)
+    unique_users: int = Field(0, ge=0)
+    new_users: int = Field(0, ge=0)
+    returning_users: int = Field(0, ge=0)
+    conversion_rate: float = Field(0.0, ge=0.0, le=1.0)
+    campaign_revenue_usd: float = Field(0.0, ge=0.0)
+
+class CampaignAnalyticsHourlyCreate(CampaignAnalyticsHourlyBase):
+    """Schema for creating hourly analytics."""
+    pass
+
+class CampaignAnalyticsHourlyResponse(CampaignAnalyticsHourlyBase):
+    """Schema for hourly analytics response."""
+    id: uuid.UUID
+    company_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AggregationRequest(BaseModel):
+    """Request to trigger data aggregation."""
+    company_id: uuid.UUID
+    campaign_id: str
+    start_date: date
+    end_date: date
+    force_reaggregate: bool = Field(False, description="Force re-aggregation of existing data")
+
+
+class AggregationResponse(BaseModel):
+    """Response from data aggregation."""
+    company_id: uuid.UUID
+    campaign_id: str
+    start_date: date
+    end_date: date
+    raw_events_processed: int
+    daily_aggregations_created: int
+    hourly_aggregations_created: int
+    storage_saved_mb: float
+    processing_time_seconds: float
+    message: str

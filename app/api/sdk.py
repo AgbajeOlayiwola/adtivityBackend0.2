@@ -87,10 +87,30 @@ async def receive_sdk_event(
                 ])
             )
 
-            if is_web3_event:
-                crud.handle_web3_sdk_event(db, company.id, payload)
-            else:
-                crud.handle_sdk_event(db, company.id, payload)
+            # Process through unified analytics service (aggregation system)
+            from ..core.unified_analytics_service import UnifiedAnalyticsService
+            unified_service = UnifiedAnalyticsService(db)
+            
+            # Convert payload to event data format
+            event_data = {
+                "campaign_id": "default",  # You can extract this from payload if needed
+                "event_name": payload.event_name,
+                "event_type": payload.type,
+                "user_id": payload.user_id,
+                "anonymous_id": payload.anonymous_id,
+                "session_id": payload.session_id,
+                "properties": payload.properties or {},
+                "country": payload.country,
+                "region": payload.region,
+                "city": payload.city,
+                "ip_address": payload.ip_address,
+                "timestamp": payload.timestamp,
+                "wallet_address": payload.wallet_address,
+                "chain_id": payload.chain_id
+            }
+            
+            # Process through aggregation system
+            await unified_service.process_sdk_event(str(company.id), event_data)
 
             processed_count += 1
 
