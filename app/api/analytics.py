@@ -116,15 +116,10 @@ async def get_region_analytics(
     for company_id, result in analytics_results.items():
         regions_data = result.get("regions", [])
         for region in regions_data:
-            # Transform to match RegionData schema
+            # Keep the original format that frontend expects
             transformed_region = {
                 "country": region.get("country", ""),
-                "region": region.get("region"),
-                "city": region.get("city"),
-                "user_count": region.get("users", 0),
-                "event_count": region.get("events", 0),
-                "conversion_rate": region.get("conversion_rate"),
-                "revenue_usd": region.get("revenue_usd")
+                "events": region.get("events", 0)  # Frontend expects 'events' field
             }
             all_regions.append(transformed_region)
             total_events += region.get("events", 0)
@@ -138,9 +133,9 @@ async def get_region_analytics(
             if city:
                 cities[city] = cities.get(city, 0) + region.get("events", 0)
     
-    # Sort and limit top countries and cities (return as List[str] not List[Dict])
-    top_countries = [k for k, v in sorted(countries.items(), key=lambda x: x[1], reverse=True)[:10]]
-    top_cities = [k for k, v in sorted(cities.items(), key=lambda x: x[1], reverse=True)[:10]]
+    # Return in format frontend expects (List[Dict] not List[str])
+    top_countries = [{"country": k, "events": v} for k, v in sorted(countries.items(), key=lambda x: x[1], reverse=True)[:10]]
+    top_cities = [{"city": k, "events": v} for k, v in sorted(cities.items(), key=lambda x: x[1], reverse=True)[:10]]
     
     return schemas.RegionAnalyticsResponse(
         regions=all_regions,
@@ -182,37 +177,32 @@ async def get_company_region_analytics(
     result = analytics_results.get(company_id, {})
     regions_data = result.get("regions", [])
     
-    # Transform regions data to match RegionData schema
+    # Keep the original format that frontend expects
     regions = []
     for region in regions_data:
         regions.append({
             "country": region.get("country", ""),
-            "region": region.get("region"),
-            "city": region.get("city"),
-            "user_count": region.get("users", 0),
-            "event_count": region.get("events", 0),
-            "conversion_rate": region.get("conversion_rate"),
-            "revenue_usd": region.get("revenue_usd")
+            "events": region.get("events", 0)  # Frontend expects 'events' field
         })
     
     # Calculate totals
-    total_users = sum(region.get("user_count", 0) for region in regions)
-    total_events = sum(region.get("event_count", 0) for region in regions)
+    total_users = sum(region.get("users", 0) for region in regions_data)
+    total_events = sum(region.get("events", 0) for region in regions_data)
     
     # Aggregate countries and cities
     countries = {}
     cities = {}
-    for region in regions:
+    for region in regions_data:
         country = region.get("country")
         city = region.get("city")
         if country:
-            countries[country] = countries.get(country, 0) + region.get("event_count", 0)
+            countries[country] = countries.get(country, 0) + region.get("events", 0)
         if city:
-            cities[city] = cities.get(city, 0) + region.get("event_count", 0)
+            cities[city] = cities.get(city, 0) + region.get("events", 0)
     
-    # Sort and limit top countries and cities (return as List[str] not List[Dict])
-    top_countries = [k for k, v in sorted(countries.items(), key=lambda x: x[1], reverse=True)[:10]]
-    top_cities = [k for k, v in sorted(cities.items(), key=lambda x: x[1], reverse=True)[:10]]
+    # Return in format frontend expects (List[Dict] not List[str])
+    top_countries = [{"country": k, "events": v} for k, v in sorted(countries.items(), key=lambda x: x[1], reverse=True)[:10]]
+    top_cities = [{"city": k, "events": v} for k, v in sorted(cities.items(), key=lambda x: x[1], reverse=True)[:10]]
     
     return schemas.RegionAnalyticsResponse(
         regions=regions,
