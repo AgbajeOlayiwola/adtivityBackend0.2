@@ -15,8 +15,8 @@ from .api import (
     analytics_router,
     system_router,
     imports_router,
-    twitter_router
-    # aggregation_router  # DISABLED - Using original tables instead
+    twitter_router,
+    aggregation_router
 )
 
 
@@ -65,7 +65,7 @@ app.include_router(analytics_router)
 app.include_router(system_router)
 app.include_router(imports_router)
 app.include_router(twitter_router)
-# app.include_router(aggregation_router)  # DISABLED - Using original tables instead
+app.include_router(aggregation_router)
 
 
 @app.get("/", tags=["Root"])

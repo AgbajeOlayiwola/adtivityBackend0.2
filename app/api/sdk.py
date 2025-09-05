@@ -10,6 +10,7 @@ import hashlib
 from ..core.database import get_db
 from ..core.security import get_current_client_company
 from ..core.geolocation import geolocation_service
+from ..core.unified_analytics_service import UnifiedAnalyticsService
 from .. import crud, schemas, models
 
 router = APIRouter(prefix="/sdk", tags=["SDK Events"])
@@ -87,43 +88,34 @@ async def receive_sdk_event(
                 ])
             )
 
-            # Store directly in original tables (no aggregation system)
+            # Process through unified analytics service (aggregation system)
+            unified_service = UnifiedAnalyticsService(db)
+            
+            # Prepare event data for the unified service
+            event_data = {
+                "event_name": payload.eventName or "unknown",
+                "event_type": payload.type,
+                "user_id": payload.user_id,
+                "anonymous_id": payload.anonymous_id,
+                "session_id": payload.session_id,
+                "properties": payload.properties or {},
+                "country": payload.country,
+                "region": payload.region,
+                "city": payload.city,
+                "ip_address": payload.ip_address,
+                "timestamp": payload.timestamp,
+                "is_web3_event": is_web3_event
+            }
+            
+            # Add Web3-specific fields if it's a Web3 event
             if is_web3_event:
-                # Create Web3 event
-                web3_event = models.Web3Event(
-                    client_company_id=company.id,
-                    event_name=payload.eventName or "unknown",
-                    event_type=payload.type,
-                    user_id=payload.user_id,
-                    anonymous_id=payload.anonymous_id,
-                    session_id=payload.session_id,
-                    properties=payload.properties or {},
-                    country=payload.country,
-                    region=payload.region,
-                    city=payload.city,
-                    ip_address=payload.ip_address,
-                    created_at=payload.timestamp,
-                    wallet_address=payload.wallet_address,
-                    chain_id=payload.chain_id
-                )
-                db.add(web3_event)
-            else:
-                # Create regular event
-                event = models.Event(
-                    client_company_id=company.id,
-                    event_name=payload.eventName or "unknown",
-                    event_type=payload.type,
-                    user_id=payload.user_id,
-                    anonymous_id=payload.anonymous_id,
-                    session_id=payload.session_id,
-                    properties=payload.properties or {},
-                    country=payload.country,
-                    region=payload.region,
-                    city=payload.city,
-                    ip_address=payload.ip_address,
-                    created_at=payload.timestamp
-                )
-                db.add(event)
+                event_data.update({
+                    "wallet_address": payload.wallet_address,
+                    "chain_id": payload.chain_id
+                })
+            
+            # Process through aggregation system
+            await unified_service.process_sdk_event(str(company.id), event_data)
             
             # Commit the event to database
             db.commit()

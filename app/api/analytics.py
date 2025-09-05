@@ -9,6 +9,7 @@ from sqlalchemy import and_
 
 from ..core.database import get_db
 from ..core.security import get_current_platform_user, get_current_client_company
+from ..core.unified_analytics_service import UnifiedAnalyticsService
 from .. import crud, schemas, models
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])

@@ -29,7 +29,7 @@ def get_region_analytics(
         Event.region,
         Event.city,
         func.count(Event.id).label('event_count'),
-        func.count(func.distinct(Event.user_id)).label('unique_users')
+        func.count(func.distinct(func.coalesce(Event.user_id, Event.anonymous_id))).label('unique_users')
     ).filter(
         Event.client_company_id.in_(company_ids),
         Event.timestamp >= start,
@@ -45,7 +45,7 @@ def get_region_analytics(
         func.count(func.distinct(Web3Event.user_id)).label('unique_users')
     ).filter(
         Web3Event.client_company_id.in_(company_ids),
-        Web3Event.timestamp >= end,
+        Web3Event.timestamp >= start,
         Web3Event.timestamp <= end
     )
     
