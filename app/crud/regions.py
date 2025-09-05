@@ -130,8 +130,8 @@ def get_region_analytics(
         'regions': region_objects,
         'total_users': total_users,
         'total_events': total_events,
-        'top_countries': [country[0] for country in top_countries],
-        'top_cities': [city[0] for city in top_cities]
+        'top_countries': [{"country": country[0], "events": country[1]} for country in top_countries],
+        'top_cities': [{"city": city[0], "events": city[1]} for city in top_cities]
     }
 
 
