@@ -530,11 +530,11 @@ class RegionAnalyticsResponse(BaseModel):
     """
     Response schema for region-based analytics.
     """
-    regions: List[Dict[str, Union[str, int]]] = Field(..., description="List of regions with country and events count")
+    regions: List[Dict[str, Union[str, int, None]]] = Field(..., description="List of regions with country and events count")
     total_users: int = Field(..., description="Total users across all regions")
     total_events: int = Field(..., description="Total events across all regions")
-    top_countries: List[Dict[str, Union[str, int]]] = Field(..., description="Top countries with country and events count")
-    top_cities: List[Dict[str, Union[str, int]]] = Field(..., description="Top cities with city and events count")
+    top_countries: List[Dict[str, Union[str, int, None]]] = Field(..., description="Top countries with country and events count")
+    top_cities: List[Dict[str, Union[str, int, None]]] = Field(..., description="Top cities with city and events count")
 
 class UserLocationData(BaseModel):
     """
