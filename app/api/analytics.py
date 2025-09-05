@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 
 from ..core.database import get_db
 from ..core.security import get_current_platform_user, get_current_client_company
@@ -36,41 +37,81 @@ async def get_analytics(
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
 ) -> List[schemas.PlatformMetrics]:
-    """Get analytics data using aggregation system for all companies owned by the authenticated platform user."""
-    company_ids = [str(c.id) for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
-    if not company_ids:
+    """Get analytics data using original tables for all companies owned by the authenticated platform user."""
+    # Get all companies owned by the user
+    companies = crud.get_client_companies_by_platform_user(db, current_user.id)
+    if not companies:
         return []
     
-    # Use unified analytics service for events analytics
-    from ..core.unified_analytics_service import UnifiedAnalyticsService
-    unified_service = UnifiedAnalyticsService(db)
-    
-    # Get events analytics from aggregation system
-    analytics_results = unified_service.get_analytics_data(
-        company_ids=company_ids,
-        start_date=start_date,
-        end_date=end_date,
-        data_type="events"
-    )
-    
-    # Convert to PlatformMetrics format
     metrics = []
-    for company_id, result in analytics_results.items():
-        # Get company info
-        company = crud.get_client_company_by_id(db, company_id)
-        if company:
-            metric = schemas.PlatformMetrics(
-                id=str(uuid.uuid4()),  # Generate new ID for aggregated data
-                client_company_id=company_id,
-                platform_type=platform.value,
-                chain_id=chain_id,
-                total_events=result.get("total_events", 0),
-                unique_users=result.get("total_unique_users", 0),
-                total_sessions=result.get("total_sessions", 0),
-                created_at=datetime.now(timezone.utc),
-                data_source=result.get("data_source", "aggregation")
+    
+    for company in companies:
+        # Get events from original events table
+        events_query = db.query(models.Event).filter(
+            and_(
+                models.Event.client_company_id == company.id,
+                models.Event.created_at >= start_date,
+                models.Event.created_at <= end_date
             )
-            metrics.append(metric)
+        )
+        
+        # Get Web3 events from original web3_events table
+        web3_events_query = db.query(models.Web3Event).filter(
+            and_(
+                models.Web3Event.client_company_id == company.id,
+                models.Web3Event.created_at >= start_date,
+                models.Web3Event.created_at <= end_date
+            )
+        )
+        
+        # Apply platform filter
+        if platform == schemas.PlatformType.WEB2:
+            web3_events_query = web3_events_query.filter(False)  # No Web3 events
+        elif platform == schemas.PlatformType.WEB3:
+            events_query = events_query.filter(False)  # No Web2 events
+        
+        # Apply chain_id filter for Web3 events
+        if chain_id:
+            web3_events_query = web3_events_query.filter(models.Web3Event.chain_id == chain_id)
+        
+        # Execute queries
+        events = events_query.all()
+        web3_events = web3_events_query.all()
+        
+        # Calculate metrics
+        total_events = len(events) + len(web3_events)
+        
+        # Get unique users from events
+        unique_users = set()
+        for event in events:
+            if event.user_id:
+                unique_users.add(event.user_id)
+        for event in web3_events:
+            if event.user_id:
+                unique_users.add(event.user_id)
+        
+        # Get unique sessions
+        unique_sessions = set()
+        for event in events:
+            if event.session_id:
+                unique_sessions.add(event.session_id)
+        for event in web3_events:
+            if event.session_id:
+                unique_sessions.add(event.session_id)
+        
+        # Create metrics entry
+        metric = schemas.PlatformMetrics(
+            id=str(uuid.uuid4()),
+            client_company_id=str(company.id),
+            platform_type=platform.value,
+            chain_id=chain_id,
+            total_events=total_events,
+            unique_users=len(unique_users),
+            total_sessions=len(unique_sessions),
+            created_at=datetime.now(timezone.utc),
+            data_source="original_tables"
+        )
+        metrics.append(metric)
     
     return metrics
 
