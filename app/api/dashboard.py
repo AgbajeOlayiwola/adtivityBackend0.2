@@ -250,6 +250,7 @@ async def sessions_summary(
 
     return {
         "total_sessions": int(total_sessions),
+        "total_events": int(total_events),
         "avg_events_per_session": round(avg_events_per_session, 2),
         "sessions_per_day": sessions_per_day,  # TODO: Implement daily breakdown
         "data_sources": [result.get("data_source") for result in analytics_results.values()],
@@ -312,9 +313,13 @@ async def top_regions(
     
     # Sort by count and limit
     sorted_regions = sorted(all_regions.values(), key=lambda x: x["count"], reverse=True)[:limit]
+    
+    # Calculate total events across all regions
+    total_events = sum(region["count"] for region in all_regions.values())
 
     return {
         "items": sorted_regions,
+        "total_events": total_events,
         "data_sources": [result.get("data_source") for result in analytics_results.values()],
         "subscription_tiers": list(set([result.get("subscription_tier", "basic") for result in analytics_results.values()]))
     }
@@ -372,9 +377,13 @@ async def recent_sessions(
     
     # Sort by last_seen and limit
     sorted_sessions = sorted(all_sessions, key=lambda x: x["last_seen"] or "", reverse=True)[:limit]
+    
+    # Calculate total events across all sessions
+    total_events = sum(session["events"] for session in all_sessions)
 
     return {
         "items": sorted_sessions,
+        "total_events": total_events,
         "data_sources": [result.get("data_source") for result in analytics_results.values()],
         "subscription_tiers": list(set([result.get("subscription_tier", "basic") for result in analytics_results.values()]))
     }
