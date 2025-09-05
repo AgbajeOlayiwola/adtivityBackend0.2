@@ -227,8 +227,8 @@ async def sessions_summary(
         events_query = db.query(models.Event).filter(
             and_(
                 models.Event.client_company_id == company_id,
-                models.Event.created_at >= since,
-                models.Event.created_at <= end_date
+                models.Event.timestamp >= since,
+                models.Event.timestamp <= end_date
             )
         )
         
@@ -236,8 +236,8 @@ async def sessions_summary(
         web3_events_query = db.query(models.Web3Event).filter(
             and_(
                 models.Web3Event.client_company_id == company_id,
-                models.Web3Event.created_at >= since,
-                models.Web3Event.created_at <= end_date
+                models.Web3Event.timestamp >= since,
+                models.Web3Event.timestamp <= end_date
             )
         )
         
@@ -253,18 +253,18 @@ async def sessions_summary(
             session_id = event.session_id
             if session_id:
                 if session_id not in sessions:
-                    sessions[session_id] = {
-                        "session_id": session_id,
-                        "first_seen": event.created_at,
-                        "last_seen": event.created_at,
-                        "events": 0,
-                        "user_id": event.user_id
-                    }
-                sessions[session_id]["events"] += 1
-                if event.created_at < sessions[session_id]["first_seen"]:
-                    sessions[session_id]["first_seen"] = event.created_at
-                if event.created_at > sessions[session_id]["last_seen"]:
-                    sessions[session_id]["last_seen"] = event.created_at
+                                    sessions[session_id] = {
+                    "session_id": session_id,
+                    "first_seen": event.timestamp,
+                    "last_seen": event.timestamp,
+                    "events": 0,
+                    "user_id": event.user_id
+                }
+            sessions[session_id]["events"] += 1
+            if event.timestamp < sessions[session_id]["first_seen"]:
+                sessions[session_id]["first_seen"] = event.timestamp
+            if event.timestamp > sessions[session_id]["last_seen"]:
+                sessions[session_id]["last_seen"] = event.timestamp
         
         analytics_results[company_id] = {
             "sessions": list(sessions.values()),
