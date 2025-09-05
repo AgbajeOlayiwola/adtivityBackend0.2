@@ -181,10 +181,10 @@ async def get_company_region_analytics(
     regions = []
     for region in regions_data:
         regions.append({
-            "country": region.get("country", ""),
+            "country": region.get("country"),
             "region": region.get("region"),
             "city": region.get("city"),
-            "events": region.get("events", 0)  # Frontend expects 'events' field
+            "events": region.get("events", 0)        # Frontend expects 'events' field
         })
     
     # Calculate totals
