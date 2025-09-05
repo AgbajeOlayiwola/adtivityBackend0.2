@@ -8,6 +8,7 @@ from sqlalchemy import func, and_, or_
 import json
 import time
 import uuid
+from dateutil import parser
 
 from ..models import (
     RawEvent, CampaignAnalyticsDaily, CampaignAnalyticsHourly, 
@@ -107,7 +108,11 @@ class AggregationService:
         self, company_id: str, campaign_id: str, event_data: Dict[str, Any], plan: SubscriptionPlan
     ):
         """Update daily aggregation for the event."""
-        event_date = event_data.get("timestamp", datetime.utcnow()).date()
+        timestamp = event_data.get("timestamp", datetime.utcnow())
+        if isinstance(timestamp, str):
+            # Parse string timestamp to datetime
+            timestamp = parser.parse(timestamp)
+        event_date = timestamp.date()
         
         # Get or create daily aggregation
         daily_agg = self.db.query(CampaignAnalyticsDaily).filter(
@@ -206,6 +211,9 @@ class AggregationService:
     ):
         """Update hourly aggregation for the event."""
         event_timestamp = event_data.get("timestamp", datetime.utcnow())
+        if isinstance(event_timestamp, str):
+            # Parse string timestamp to datetime
+            event_timestamp = parser.parse(event_timestamp)
         event_date = event_timestamp.date()
         event_hour = event_timestamp.hour
         
