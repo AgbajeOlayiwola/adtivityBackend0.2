@@ -42,7 +42,6 @@ def create_client_company_with_api_key(
         max_raw_events_per_month=1000,
         max_aggregated_rows_per_month=100000,
         monthly_price_usd=0.0,
-        is_active=True,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc)
     )
