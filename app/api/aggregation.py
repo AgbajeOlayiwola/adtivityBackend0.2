@@ -58,7 +58,7 @@ async def get_subscription_plan(
     if not subscription:
         # Return default basic plan
         return schemas.SubscriptionPlanResponse(
-            id=None,
+            id=uuid.uuid4(),
             company_id=current_company.id,
             plan_name="basic",
             plan_tier=1,
