@@ -4,18 +4,17 @@ Upgrade all companies to Enterprise subscription plan on Heroku.
 This script is designed to run on Heroku with proper environment handling.
 """
 
-import os
 import sys
+import os
 import traceback
 from datetime import datetime
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 # Add the app directory to the Python path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'app'))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Import the database session directly from the app
-from app.database import SessionLocal
+from app.core.config import settings
 from app.models import SubscriptionPlan, ClientCompany
 import uuid
 
@@ -28,7 +27,10 @@ def upgrade_all_to_enterprise_heroku():
     try:
         print(f"🔗 Connecting to Heroku database...")
         
-        # Use the app's database session directly
+        # Database connection using the same pattern as other scripts
+        database_url = settings.DATABASE_URL
+        engine = create_engine(database_url)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         db = SessionLocal()
         
         # Get all companies
