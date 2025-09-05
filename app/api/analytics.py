@@ -50,8 +50,8 @@ async def get_analytics(
         events_query = db.query(models.Event).filter(
             and_(
                 models.Event.client_company_id == company.id,
-                models.Event.created_at >= start_date,
-                models.Event.created_at <= end_date
+                models.Event.timestamp >= start_date,
+                models.Event.timestamp <= end_date
             )
         )
         
@@ -59,8 +59,8 @@ async def get_analytics(
         web3_events_query = db.query(models.Web3Event).filter(
             and_(
                 models.Web3Event.client_company_id == company.id,
-                models.Web3Event.created_at >= start_date,
-                models.Web3Event.created_at <= end_date
+                models.Web3Event.timestamp >= start_date,
+                models.Web3Event.timestamp <= end_date
             )
         )
         
@@ -81,12 +81,15 @@ async def get_analytics(
         # Calculate metrics
         total_events = len(events) + len(web3_events)
         
-        # Get unique users from events
+        # Get unique users from events (both user_id and anonymous_id)
         unique_users = set()
         for event in events:
-            if event.user_id:
-                unique_users.add(event.user_id)
+            # Use user_id if available, otherwise use anonymous_id
+            user_identifier = event.user_id or event.anonymous_id
+            if user_identifier:
+                unique_users.add(user_identifier)
         for event in web3_events:
+            # Web3 events only have user_id (no anonymous_id column)
             if event.user_id:
                 unique_users.add(event.user_id)
         
@@ -100,18 +103,18 @@ async def get_analytics(
                 unique_sessions.add(event.session_id)
         
         # Create metrics entry
-        metric = schemas.PlatformMetrics(
+            metric = schemas.PlatformMetrics(
             id=str(uuid.uuid4()),
             client_company_id=str(company.id),
-            platform_type=platform.value,
-            chain_id=chain_id,
+                platform_type=platform.value,
+                chain_id=chain_id,
             total_events=total_events,
             unique_users=len(unique_users),
             total_sessions=len(unique_sessions),
-            created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(timezone.utc),
             data_source="original_tables"
-        )
-        metrics.append(metric)
+            )
+            metrics.append(metric)
     
     return metrics
 
