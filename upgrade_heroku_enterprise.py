@@ -14,7 +14,8 @@ from sqlalchemy.orm import sessionmaker
 # Add the app directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'app'))
 
-from app.core.config import settings
+# Import the database session directly from the app
+from app.database import SessionLocal
 from app.models import SubscriptionPlan, ClientCompany
 import uuid
 
@@ -25,17 +26,9 @@ def upgrade_all_to_enterprise_heroku():
     print("=" * 50)
     
     try:
-        # Use Heroku's DATABASE_URL environment variable
-        database_url = os.getenv('DATABASE_URL')
-        if not database_url:
-            print("❌ DATABASE_URL environment variable not found!")
-            return False
-        
         print(f"🔗 Connecting to Heroku database...")
         
-        # Create database connection
-        engine = create_engine(database_url)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        # Use the app's database session directly
         db = SessionLocal()
         
         # Get all companies
