@@ -190,6 +190,7 @@ def create_client_company_with_api_key(
     """
     Creates a new client company and associates it with a PlatformUser.
     Returns the new company object and the raw (unhashed) API key.
+    Automatically creates a basic subscription plan for the new company.
     """
     raw_api_key = secrets.token_urlsafe(32) # Use a cryptographically secure token
     hashed_key = pwd_context.hash(raw_api_key)
@@ -202,6 +203,28 @@ def create_client_company_with_api_key(
     db.add(db_company)
     db.commit()
     db.refresh(db_company)
+    
+    # Automatically create a basic subscription plan for the new company
+    from .models import SubscriptionPlan
+    from datetime import datetime, timezone
+    import uuid
+    
+    basic_plan = SubscriptionPlan(
+        id=uuid.uuid4(),
+        company_id=db_company.id,
+        plan_tier=1,
+        plan_name="basic",
+        raw_data_retention_days=30,
+        aggregation_frequency="daily",
+        max_raw_events_per_month=1000,
+        max_aggregated_rows_per_month=100000,
+        monthly_price_usd=0.0,
+        is_active=True,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc)
+    )
+    db.add(basic_plan)
+    db.commit()
     
     return db_company, raw_api_key
 
