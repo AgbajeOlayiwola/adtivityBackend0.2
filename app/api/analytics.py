@@ -132,18 +132,18 @@ async def get_analytics(
                 unique_sessions.add(event.session_id)
         
         # Create metrics entry
-        metric = schemas.PlatformMetrics(
+            metric = schemas.PlatformMetrics(
             id=str(uuid.uuid4()),
             client_company_id=str(company.id),
-            platform_type=platform.value,
-            chain_id=chain_id,
+                platform_type=platform.value,
+                chain_id=chain_id,
             total_events=total_events,
             unique_users=len(unique_users),
             total_sessions=len(unique_sessions),
-            created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(timezone.utc),
             data_source="raw_events"
-        )
-        metrics.append(metric)
+            )
+            metrics.append(metric)
     
     return metrics
 
