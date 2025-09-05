@@ -37,15 +37,43 @@ async def get_analytics(
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
 ) -> List[schemas.PlatformMetrics]:
-    """Get analytics data using original tables for all companies owned by the authenticated platform user."""
-    # Get all companies owned by the user
-    companies = crud.get_client_companies_by_platform_user(db, current_user.id)
-    if not companies:
+    """Get analytics data for all companies owned by the authenticated platform user."""
+    company_ids = [c.id for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
+    if not company_ids:
         return []
     
-    metrics = []
+    # First try to get metrics from platform_metrics table
+    platform_metrics = crud.get_metrics_by_timeframe_for_companies(
+        db=db,
+        company_ids=company_ids,
+        start=start_date,
+        end=end_date,
+        platform=platform.value,
+        chain_id=chain_id
+    )
     
+    # Get companies that have platform_metrics
+    companies_with_metrics = set()
+    if platform_metrics:
+        for metric in platform_metrics:
+            companies_with_metrics.add(metric.client_company_id)
+    
+    # If all companies have platform_metrics, return them
+    if len(companies_with_metrics) == len(company_ids):
+        return platform_metrics
+    
+    # Handle mixed scenario: some companies with platform_metrics, some without
+    metrics = []
+    companies = crud.get_client_companies_by_platform_user(db, current_user.id)
+    
+    # Add existing platform_metrics
+    if platform_metrics:
+        metrics.extend(platform_metrics)
+    
+    # Calculate from raw events for companies without platform_metrics
     for company in companies:
+        if str(company.id) in companies_with_metrics:
+            continue  # Skip companies that already have platform_metrics
         # Get events from original events table
         events_query = db.query(models.Event).filter(
             and_(
@@ -103,18 +131,18 @@ async def get_analytics(
                 unique_sessions.add(event.session_id)
         
         # Create metrics entry
-            metric = schemas.PlatformMetrics(
+        metric = schemas.PlatformMetrics(
             id=str(uuid.uuid4()),
             client_company_id=str(company.id),
-                platform_type=platform.value,
-                chain_id=chain_id,
+            platform_type=platform.value,
+            chain_id=chain_id,
             total_events=total_events,
             unique_users=len(unique_users),
             total_sessions=len(unique_sessions),
-                created_at=datetime.now(timezone.utc),
-            data_source="original_tables"
-            )
-            metrics.append(metric)
+            created_at=datetime.now(timezone.utc),
+            data_source="raw_events"
+        )
+        metrics.append(metric)
     
     return metrics
 
