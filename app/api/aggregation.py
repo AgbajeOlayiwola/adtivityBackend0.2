@@ -1,5 +1,6 @@
 """Data aggregation API endpoints."""
 
+import uuid
 from datetime import datetime, date, timedelta
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
