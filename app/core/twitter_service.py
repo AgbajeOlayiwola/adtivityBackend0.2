@@ -3,8 +3,11 @@
 import httpx
 import json
 import re
+import time
+import asyncio
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime, timedelta
+from requests_oauthlib import OAuth1Session
 from .twitter_config import twitter_settings
 from ..schemas import TwitterProfileData, TwitterTweetBase, TwitterFollowerBase
 
@@ -14,15 +17,54 @@ class TwitterService:
     
     def __init__(self):
         self.bearer_token = twitter_settings.TWITTER_BEARER_TOKEN
+        self.api_key = twitter_settings.TWITTER_API_KEY
+        self.api_secret = twitter_settings.TWITTER_API_SECRET
+        self.access_token = twitter_settings.TWITTER_ACCESS_TOKEN
+        self.access_token_secret = twitter_settings.TWITTER_ACCESS_TOKEN_SECRET
         self.base_url = twitter_settings.TWITTER_API_BASE_URL
         self.headers = {
             "Authorization": f"Bearer {self.bearer_token}",
             "Content-Type": "application/json"
         }
+        
+        # Rate limiting and caching
+        self.user_cache = {}  # Simple in-memory cache
+        self.rate_limit_reset = 0
+        self.last_request_time = 0
+    
+    def _get_oauth_session(self) -> OAuth1Session:
+        """Create OAuth 1.0a session for user context authentication."""
+        return OAuth1Session(
+            client_key=self.api_key,
+            client_secret=self.api_secret,
+            resource_owner_key=self.access_token,
+            resource_owner_secret=self.access_token_secret
+        )
     
     async def get_user_by_username(self, username: str) -> Optional[TwitterProfileData]:
-        """Get Twitter user profile by username."""
+        """Get Twitter user profile by username with rate limiting and caching."""
         try:
+            # Check cache first
+            cache_key = f"user_{username.lower()}"
+            if cache_key in self.user_cache:
+                cached_data, cache_time = self.user_cache[cache_key]
+                # Cache for 5 minutes
+                if time.time() - cache_time < 300:
+                    if cached_data is not None:
+                        print(f"📦 Using cached data for @{username}")
+                    return cached_data
+            
+            # Check rate limits
+            current_time = time.time()
+            if current_time < self.rate_limit_reset:
+                wait_time = self.rate_limit_reset - current_time
+                print(f"⏳ Rate limit active. Wait {wait_time:.0f} seconds before next request.")
+                return None
+            
+            # Rate limiting: wait at least 1 second between requests
+            if current_time - self.last_request_time < 1:
+                await asyncio.sleep(1)
+            
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     f"{self.base_url}/users/by/username/{username}",
@@ -32,6 +74,8 @@ class TwitterService:
                     }
                 )
                 
+                self.last_request_time = time.time()
+                
                 if response.status_code == 200:
                     data = response.json()
                     user_data = data.get("data", {})
@@ -39,7 +83,7 @@ class TwitterService:
                     # Extract metrics
                     metrics = user_data.get("public_metrics", {})
                     
-                    return TwitterProfileData(
+                    profile_data = TwitterProfileData(
                         id=user_data.get("id"),
                         username=user_data.get("username"),
                         name=user_data.get("name"),
@@ -51,8 +95,34 @@ class TwitterService:
                         tweets_count=metrics.get("tweet_count", 0),
                         created_at=datetime.fromisoformat(user_data.get("created_at").replace("Z", "+00:00")) if user_data.get("created_at") else None
                     )
+                    
+                    # Cache the result
+                    self.user_cache[cache_key] = (profile_data, time.time())
+                    print(f"✅ Fetched and cached @{username}")
+                    
+                    return profile_data
                 
-                return None
+                elif response.status_code == 429:
+                    # Handle rate limiting
+                    rate_limit_reset = response.headers.get('x-rate-limit-reset')
+                    if rate_limit_reset:
+                        self.rate_limit_reset = int(rate_limit_reset)
+                        print(f"⚠️ Rate limit exceeded. Reset at: {datetime.fromtimestamp(self.rate_limit_reset)}")
+                    else:
+                        # Fallback: wait 15 minutes
+                        self.rate_limit_reset = current_time + 900
+                        print("⚠️ Rate limit exceeded. Waiting 15 minutes.")
+                    return None
+                
+                elif response.status_code == 404:
+                    print(f"❌ User @{username} not found")
+                    # Cache the "not found" result to avoid repeated API calls
+                    self.user_cache[cache_key] = (None, time.time())
+                    return None
+                
+                else:
+                    print(f"❌ Twitter API Error {response.status_code} for @{username}: {response.text[:100]}")
+                    return None
                 
         except Exception as e:
             print(f"Error fetching Twitter user {username}: {e}")
@@ -67,50 +137,98 @@ class TwitterService:
             if len(query) < 2:
                 return []
             
-            async with httpx.AsyncClient() as client:
-                # Use the users/search endpoint for autocomplete
-                response = await client.get(
-                    f"{self.base_url}/users/search",
-                    headers=self.headers,
-                    params={
-                        "query": query,
-                        "max_results": max_results,
-                        "user.fields": "id,username,name,description,profile_image_url,verified,public_metrics,created_at"
-                    }
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    users = data.get("data", [])
-                    
-                    user_list = []
-                    for user in users:
-                        # Extract metrics
-                        metrics = user.get("public_metrics", {})
-                        
-                        user_data = {
-                            "id": user.get("id"),
-                            "username": user.get("username"),
-                            "name": user.get("name"),
-                            "description": user.get("description", ""),
-                            "profile_image_url": user.get("profile_image_url"),
-                            "verified": user.get("verified", False),
-                            "followers_count": metrics.get("followers_count", 0),
-                            "following_count": metrics.get("following_count", 0),
-                            "tweets_count": metrics.get("tweet_count", 0),
-                            "created_at": user.get("created_at"),
-                            "display_name": f"@{user.get('username')} - {user.get('name', '')}",
-                            "verified_badge": "✓" if user.get("verified", False) else ""
-                        }
-                        
-                        user_list.append(user_data)
-                    
-                    return user_list
-                
-                return []
+            # Strategy 1: Try exact username lookup first (works with basic API access)
+            # GET /2/users/by/username/:username
+            user_data = await self.get_user_by_username(query)
+            if user_data:
+                # Convert TwitterProfileData to dict format for autocomplete
+                user_dict = {
+                    "id": user_data.id,
+                    "username": user_data.username,
+                    "name": user_data.name,
+                    "description": user_data.description or "",
+                    "profile_image_url": user_data.profile_image_url,
+                    "verified": user_data.verified,
+                    "followers_count": user_data.followers_count,
+                    "following_count": user_data.following_count,
+                    "tweets_count": user_data.tweets_count,
+                    "created_at": user_data.created_at.isoformat() if user_data.created_at else None,
+                    "display_name": f"@{user_data.username} - {user_data.name or ''}",
+                    "verified_badge": "✓" if user_data.verified else ""
+                }
+                return [user_dict]
+            
+            # Strategy 2: Try multiple username variations for partial matches
+            # This simulates autocomplete by trying common variations
+            variations = await self._try_username_variations(query, max_results)
+            if variations:
+                return variations
+            
+            # Strategy 3: Try search endpoint if available (requires higher API access)
+            search_results = await self._try_search_endpoint(query, max_results)
+            if search_results:
+                return search_results
+            
+            # No results found
+            return []
                 
         except Exception as e:
             print(f"Error searching Twitter users for '{query}': {e}")
+            return []
+    
+    async def _try_username_variations(self, query: str, max_results: int) -> List[Dict]:
+        """Try common username variations to find multiple users."""
+        try:
+            # Common variations to try
+            variations = [
+                query,  # Original
+                f"{query}1", f"{query}2", f"{query}3",  # Numbered versions
+                f"{query}_", f"_{query}",  # Underscore variations
+                f"{query}official", f"{query}real",  # Official accounts
+            ]
+            
+            results = []
+            for variation in variations[:max_results]:
+                if len(results) >= max_results:
+                    break
+                    
+                user_data = await self.get_user_by_username(variation)
+                if user_data:
+                    user_dict = {
+                        "id": user_data.id,
+                        "username": user_data.username,
+                        "name": user_data.name,
+                        "description": user_data.description or "",
+                        "profile_image_url": user_data.profile_image_url,
+                        "verified": user_data.verified,
+                        "followers_count": user_data.followers_count,
+                        "following_count": user_data.following_count,
+                        "tweets_count": user_data.tweets_count,
+                        "created_at": user_data.created_at.isoformat() if user_data.created_at else None,
+                        "display_name": f"@{user_data.username} - {user_data.name or ''}",
+                        "verified_badge": "✓" if user_data.verified else ""
+                    }
+                    results.append(user_dict)
+            
+            if results:
+                print(f"🔍 Found {len(results)} users with variations of '{query}'")
+            
+            return results
+            
+        except Exception as e:
+            print(f"Error trying username variations: {e}")
+            return []
+    
+    async def _try_search_endpoint(self, query: str, max_results: int) -> List[Dict]:
+        """Try the search endpoint for multiple users (requires higher API access)."""
+        try:
+            # This would use the /users/search endpoint
+            # But it requires OAuth 1.0a User Context and higher API access
+            print(f"🔍 Search endpoint not available (requires higher API access) for '{query}'")
+            return []
+            
+        except Exception as e:
+            print(f"Error with search endpoint: {e}")
             return []
     
     async def validate_twitter_handle(self, handle: str) -> Dict:
