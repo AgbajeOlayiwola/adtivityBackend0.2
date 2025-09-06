@@ -102,7 +102,7 @@ async def get_client_company_events(
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
 ):
-    """Get events for a specific client company using aggregation system."""
+    """Get events for a specific client company from raw events table."""
     company = crud.get_client_company_by_id(db, company_id=company_id)
     if not company or company.platform_user_id != current_user.id:
         raise HTTPException(
@@ -110,27 +110,46 @@ async def get_client_company_events(
             detail="Not authorized to view events for this company"
         )
     
-    # Use unified analytics service to get events data
-    from ..core.unified_analytics_service import UnifiedAnalyticsService
-    unified_service = UnifiedAnalyticsService(db)
-    
-    # Get events analytics for the last 30 days
+    # Query raw events table directly
     from datetime import datetime, timezone, timedelta
+    from sqlalchemy import and_, desc
+    
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=30)
     
-    analytics_results = unified_service.get_analytics_data(
-        company_ids=[str(company_id)],
-        start_date=start_date,
-        end_date=end_date,
-        data_type="events"
+    # Build query for events
+    query = db.query(models.Event).filter(
+        and_(
+            models.Event.client_company_id == company_id,
+            models.Event.timestamp >= start_date,
+            models.Event.timestamp <= end_date
+        )
     )
     
-    # Convert aggregated data to a format the frontend can understand
+    # Add event type filter if provided
+    if event_type:
+        query = query.filter(models.Event.event_type == event_type.value)
+    
+    # Get events ordered by timestamp (newest first)
+    events = query.order_by(desc(models.Event.timestamp)).limit(1000).all()
+    
+    # Convert to response format
     events_data = []
-    for company_id_str, result in analytics_results.items():
-        if result.get("events"):
-            events_data.extend(result["events"])
+    for event in events:
+        events_data.append({
+            "id": str(event.id),
+            "event_name": event.event_name,
+            "event_type": event.event_type,
+            "user_id": event.user_id,
+            "anonymous_id": event.anonymous_id,
+            "session_id": event.session_id,
+            "properties": event.properties or {},
+            "timestamp": event.timestamp,
+            "country": event.country,
+            "region": event.region,
+            "city": event.city,
+            "ip_address": event.ip_address
+        })
     
     return events_data
 
@@ -234,45 +253,51 @@ async def sessions_summary(
     since = datetime.now(timezone.utc) - timedelta(days=days)
     end_date = datetime.now(timezone.utc)
 
-    # Use unified analytics service to get data from aggregation system
-    from ..core.unified_analytics_service import UnifiedAnalyticsService
-    unified_service = UnifiedAnalyticsService(db)
+    # Query raw events table directly
+    from sqlalchemy import and_, func
     
-    # Get sessions analytics using aggregation system
-    analytics_results = unified_service.get_analytics_data(
-        company_ids=company_ids,
-        start_date=since,
-        end_date=end_date,
-        data_type="sessions"
+    # Get all events for the companies in the date range
+    events_query = db.query(models.Event).filter(
+        and_(
+            models.Event.client_company_id.in_([uuid.UUID(cid) for cid in company_ids]),
+            models.Event.timestamp >= since,
+            models.Event.timestamp <= end_date
+        )
     )
     
-    # Aggregate results across all companies
-    total_sessions = 0
-    total_events = 0
-    sessions_per_day = []
+    events = events_query.all()
     
-    for company_id, result in analytics_results.items():
-        total_sessions += result.get("total_sessions", 0)
-        total_events += result.get("total_events", 0)
+    # Calculate sessions and events
+    sessions = set()
+    total_events = len(events)
+    events_per_day = {}
+    
+    for event in events:
+        # Count unique sessions
+        if event.session_id:
+            sessions.add(event.session_id)
         
-        # For daily breakdown, we'll need to implement this in the service
-        # For now, return basic aggregated data
-        if result.get("data_source") == "raw_events":
-            # Handle raw data sessions per day
-            pass
-        elif result.get("data_source") in ["hourly_aggregation", "daily_aggregation"]:
-            # Handle aggregated data
-            pass
+        # Count events per day
+        event_date = event.timestamp.date()
+        if event_date not in events_per_day:
+            events_per_day[event_date] = 0
+        events_per_day[event_date] += 1
     
+    total_sessions = len(sessions)
     avg_events_per_session = (total_events / total_sessions) if total_sessions else 0.0
+    
+    # Convert events_per_day to sessions_per_day format
+    sessions_per_day = [
+        {"date": str(date), "sessions": count, "events": count} 
+        for date, count in sorted(events_per_day.items())
+    ]
 
     return {
         "total_sessions": int(total_sessions),
         "total_events": int(total_events),
         "avg_events_per_session": round(avg_events_per_session, 2),
-        "sessions_per_day": sessions_per_day,  # TODO: Implement daily breakdown
-        "data_sources": [result.get("data_source") for result in analytics_results.values()],
-        "subscription_tiers": list(set([result.get("subscription_tier", "basic") for result in analytics_results.values()]))
+        "sessions_per_day": sessions_per_day,
+        "data_source": "raw_events"
     }
 
 
@@ -286,7 +311,7 @@ async def top_regions(
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
 ):
-    """Top regions by event count using aggregation system."""
+    """Top regions by event count using raw events table."""
     # Resolve company IDs owned by user
     if company_id:
         company = crud.get_client_company_by_id(db, company_id=company_id)
@@ -298,48 +323,48 @@ async def top_regions(
         if not company_ids:
             return {"items": []}
 
-    # Use unified analytics service
-    from ..core.unified_analytics_service import UnifiedAnalyticsService
-    unified_service = UnifiedAnalyticsService(db)
+    # Query raw events table directly
+    from sqlalchemy import and_
     
     # Get regions analytics for last 30 days
     since = datetime.now(timezone.utc) - timedelta(days=30)
     end_date = datetime.now(timezone.utc)
     
-    analytics_results = unified_service.get_analytics_data(
-        company_ids=company_ids,
-        start_date=since,
-        end_date=end_date,
-        data_type="regions"
+    # Get all events for the companies in the date range
+    events_query = db.query(models.Event).filter(
+        and_(
+            models.Event.client_company_id.in_([uuid.UUID(cid) for cid in company_ids]),
+            models.Event.timestamp >= since,
+            models.Event.timestamp <= end_date,
+            models.Event.country.isnot(None)
+        )
     )
     
-    # Aggregate regions across all companies
+    events = events_query.all()
+    
+    # Aggregate regions from raw events
     all_regions = {}
-    for company_id, result in analytics_results.items():
-        regions = result.get("regions", [])
-        for region in regions:
-            country = region.get("country")
-            if country:
-                if country not in all_regions:
-                    all_regions[country] = {
-                        "country": country,
-                        "region": region.get("region"),
-                        "city": region.get("city"),
-                        "count": 0
-                    }
-                all_regions[country]["count"] += region.get("events", 0)
+    total_events = len(events)
+    
+    for event in events:
+        country = event.country
+        if country:
+            if country not in all_regions:
+                all_regions[country] = {
+                    "country": country,
+                    "region": event.region,
+                    "city": event.city,
+                    "count": 0
+                }
+            all_regions[country]["count"] += 1
     
     # Sort by count and limit
     sorted_regions = sorted(all_regions.values(), key=lambda x: x["count"], reverse=True)[:limit]
-    
-    # Calculate total events across all regions
-    total_events = sum(region["count"] for region in all_regions.values())
 
     return {
         "items": sorted_regions,
         "total_events": total_events,
-        "data_sources": [result.get("data_source") for result in analytics_results.values()],
-        "subscription_tiers": list(set([result.get("subscription_tier", "basic") for result in analytics_results.values()]))
+        "data_source": "raw_events"
     }
 
 
@@ -494,78 +519,83 @@ async def unique_users_analytics(
     since = datetime.now(timezone.utc) - timedelta(days=days)
     end_date = datetime.now(timezone.utc)
 
-    # Use unified analytics service
-    from ..core.unified_analytics_service import UnifiedAnalyticsService
-    unified_service = UnifiedAnalyticsService(db)
+    # Query raw events table directly
+    from sqlalchemy import and_
     
-    analytics_results = unified_service.get_analytics_data(
-        company_ids=company_ids,
-        start_date=since,
-        end_date=end_date,
-        data_type="unique_users"
+    # Get all events for the companies in the date range
+    events_query = db.query(models.Event).filter(
+        and_(
+            models.Event.client_company_id.in_([uuid.UUID(cid) for cid in company_ids]),
+            models.Event.timestamp >= since,
+            models.Event.timestamp <= end_date
+        )
     )
     
-    # Aggregate results across all companies
-    total_unique_users = 0
-    total_events = 0
-    all_sessions = []
+    events = events_query.all()
     
-    for company_id, result in analytics_results.items():
-        total_unique_users += result.get("total_unique_users", 0)
-        total_events += result.get("total_events", 0)
+    # Calculate unique users and events
+    unique_users = set()
+    user_event_counts = {}
+    users_per_day = {}
+    recent_users = []
+    total_events = len(events)
+    
+    for event in events:
+        # Count unique users (using session_id as proxy for unique users)
+        if event.session_id:
+            unique_users.add(event.session_id)
+            if event.session_id not in user_event_counts:
+                user_event_counts[event.session_id] = 0
+            user_event_counts[event.session_id] += 1
         
-        # Get sessions for recent/top users (if available from raw data)
-        if result.get("data_source") == "raw_events":
-            # For raw data, we can get individual sessions
-            sessions = result.get("sessions", [])
-            for session in sessions:
-                all_sessions.append({
-                    "session_id": session.get("session_id"),
-                    "first_seen": session.get("first_seen"),
-                    "last_seen": session.get("last_seen"),
-                    "total_events": session.get("events", 0),
-                    "user_id": session.get("user_id")
-                })
+        # Count users per day
+        event_date = event.timestamp.date()
+        if event_date not in users_per_day:
+            users_per_day[event_date] = set()
+        if event.session_id:
+            users_per_day[event_date].add(event.session_id)
     
-    # Calculate averages
+    total_unique_users = len(unique_users)
     avg_events_per_user = (total_events / total_unique_users) if total_unique_users else 0.0
 
-    # Sort sessions for recent and top users
-    recent_users = []
-    top_users_by_events = []
+    # Convert users_per_day to list format
+    users_per_day_list = [
+        {"date": str(date), "users": len(users)} 
+        for date, users in sorted(users_per_day.items())
+    ]
     
-    if all_sessions:
-        # Recent users (by last_seen)
-        recent_sessions = sorted(all_sessions, key=lambda x: x.get("last_seen") or datetime.min, reverse=True)[:limit]
-        recent_users = [
-            schemas.UniqueUserData(
-                session_id=s["session_id"],
-                first_seen=s["first_seen"],
-                last_seen=s["last_seen"],
-                total_events=s["total_events"],
-                company_id=company_id,
-                company_name=company_name
-            ) for s in recent_sessions
-        ]
-
-        # Top users (by total_events)
-        top_sessions = sorted(all_sessions, key=lambda x: x.get("total_events", 0), reverse=True)[:limit]
-        top_users_by_events = [
-            schemas.UniqueUserData(
-                session_id=s["session_id"],
-                first_seen=s["first_seen"],
-                last_seen=s["last_seen"],
-                total_events=s["total_events"],
-                company_id=company_id,
-                company_name=company_name
-            ) for s in top_sessions
-        ]
+    # Get top users by events
+    top_users_by_events = [
+        schemas.UniqueUserData(
+            session_id=user_id,
+            first_seen=None,  # Not available from raw events
+            last_seen=None,   # Not available from raw events
+            total_events=count,
+            company_id=company_id,
+            company_name=company_name
+        )
+        for user_id, count in sorted(user_event_counts.items(), key=lambda x: x[1], reverse=True)[:limit]
+    ]
+    
+    # Get recent users (last 10 unique sessions)
+    recent_sessions = list(unique_users)[-10:] if unique_users else []
+    recent_users = [
+        schemas.UniqueUserData(
+            session_id=session_id,
+            first_seen=None,  # Not available from raw events
+            last_seen=None,   # Not available from raw events
+            total_events=user_event_counts.get(session_id, 0),
+            company_id=company_id,
+            company_name=company_name
+        ) 
+        for session_id in recent_sessions
+    ]
 
     return schemas.UniqueUsersResponse(
         total_unique_users=int(total_unique_users),
         total_events=int(total_events),
         avg_events_per_user=round(avg_events_per_user, 2),
-        users_per_day=[],  # TODO: Implement daily breakdown in aggregation service
+        users_per_day=users_per_day_list,
         recent_users=recent_users,
         top_users_by_events=top_users_by_events
     ) 

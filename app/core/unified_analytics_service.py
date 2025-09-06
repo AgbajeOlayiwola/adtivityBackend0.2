@@ -51,10 +51,9 @@ class UnifiedAnalyticsService:
         # Process through aggregation system
         aggregation_result = await self.aggregation_service.process_event(company_id, event_data)
         
-        # Also store in original tables for backward compatibility (if needed)
-        # This can be removed once all systems are migrated
-        if plan.plan_tier >= 3:  # Enterprise - keep raw data
-            self._store_legacy_event(company_id, event_data)
+        # Always store in original tables for dashboard compatibility
+        # This ensures all events are available in the raw events table
+        self._store_legacy_event(company_id, event_data)
         
         return aggregation_result
     
