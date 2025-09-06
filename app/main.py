@@ -1,7 +1,8 @@
 """Main FastAPI application entry point."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from .core.config import settings
@@ -56,6 +57,38 @@ app.add_middleware(
     ],
     sdk_paths=["/sdk/", "/sdk/event", "/sdk/events"]
 )
+
+# Global exception handler to ensure CORS headers are always set
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Global exception handler that ensures CORS headers are set even on errors."""
+    origin = request.headers.get("origin")
+    
+    # Create error response
+    if isinstance(exc, HTTPException):
+        response = JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail}
+        )
+    else:
+        response = JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"}
+        )
+    
+    # Set CORS headers
+    if origin and origin in [
+        "https://adtivity.vercel.app",
+        "http://localhost:3000",
+        "http://localhost:3001", 
+        "http://localhost:8080",
+        "http://localhost:9999",
+        "http://localhost:3002"
+    ]:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
 
 # Include API routers
 app.include_router(auth_router)
