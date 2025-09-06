@@ -95,14 +95,14 @@ async def delete_client_company(
     return {"message": f"Client company with ID {company_id} has been deleted"}
 
 
-@router.get("/client-companies/{company_id}/events", response_model=List[schemas.Event])
+@router.get("/client-companies/{company_id}/events")
 async def get_client_company_events(
     company_id: uuid.UUID = Path(..., description="The UUID of the client company"),
     event_type: schemas.SDKEventType = Query(None, description="Filter events by type"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
-) -> List[schemas.Event]:
-    """Get all standard (Web2) events for a specific client company."""
+):
+    """Get events for a specific client company using aggregation system."""
     company = crud.get_client_company_by_id(db, company_id=company_id)
     if not company or company.platform_user_id != current_user.id:
         raise HTTPException(
@@ -110,11 +110,29 @@ async def get_client_company_events(
             detail="Not authorized to view events for this company"
         )
     
-    return crud.get_events_for_client_company(
-        db,
-        client_company_id=company_id,
-        event_type=event_type
+    # Use unified analytics service to get events data
+    from ..core.unified_analytics_service import UnifiedAnalyticsService
+    unified_service = UnifiedAnalyticsService(db)
+    
+    # Get events analytics for the last 30 days
+    from datetime import datetime, timezone, timedelta
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=30)
+    
+    analytics_results = unified_service.get_analytics_data(
+        company_ids=[str(company_id)],
+        start_date=start_date,
+        end_date=end_date,
+        data_type="events"
     )
+    
+    # Convert aggregated data to a format the frontend can understand
+    events_data = []
+    for company_id_str, result in analytics_results.items():
+        if result.get("events"):
+            events_data.extend(result["events"])
+    
+    return events_data
 
 
 @router.get("/client-companies/{company_id}/web3-events", response_model=List[schemas.Web3Event])
