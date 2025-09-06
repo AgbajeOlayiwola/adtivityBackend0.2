@@ -49,14 +49,15 @@ class TwitterCRUD:
             db.refresh(db_twitter)
         return db_twitter
     
-    def delete_company_twitter(self, db: Session, twitter_id: int) -> bool:
-        """Delete company Twitter account."""
+    def delete_company_twitter(self, db: Session, twitter_id: int) -> Optional[str]:
+        """Delete company Twitter account and return company_id."""
         db_twitter = self.get_company_twitter(db, twitter_id)
         if db_twitter:
+            company_id = db_twitter.company_id
             db.delete(db_twitter)
             db.commit()
-            return True
-        return False
+            return company_id
+        return None
     
     # Twitter Tweet operations
     def create_tweet(self, db: Session, tweet_data: Dict[str, Any]) -> TwitterTweet:

@@ -20,12 +20,34 @@ from .. import crud, schemas, models
 router = APIRouter(prefix="/dashboard", tags=["Dashboard Management"])
 
 
-@router.get("/me", response_model=schemas.PlatformUser)
+@router.get("/me", response_model=schemas.UserProfileResponse)
 async def get_current_user_profile(
-    current_user: models.PlatformUser = Depends(get_current_platform_user)
-) -> models.PlatformUser:
-    """Get the profile of the currently authenticated platform user."""
-    return current_user
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+) -> schemas.UserProfileResponse:
+    """Get the profile of the currently authenticated platform user with Twitter status."""
+    # Get all companies owned by this user
+    companies = crud.get_client_companies_by_platform_user(db, current_user.id)
+    
+    # Calculate Twitter integration statistics
+    total_companies = len(companies)
+    companies_with_twitter = sum(1 for company in companies if company.is_twitter_added)
+    has_twitter_integration = companies_with_twitter > 0
+    
+    return schemas.UserProfileResponse(
+        id=current_user.id,
+        email=current_user.email,
+        name=current_user.name,
+        phone_number=current_user.phone_number,
+        is_active=current_user.is_active,
+        is_admin=current_user.is_admin,
+        created_at=current_user.created_at,
+        last_login=current_user.last_login,
+        companies=companies,
+        has_twitter_integration=has_twitter_integration,
+        total_companies=total_companies,
+        companies_with_twitter=companies_with_twitter
+    )
 
 
 @router.post("/client-companies/", response_model=schemas.ClientCompanyCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -348,14 +370,14 @@ async def top_regions(
     
     for event in events:
         country = event.country
-        if country:
-            if country not in all_regions:
-                all_regions[country] = {
-                    "country": country,
+            if country:
+                if country not in all_regions:
+                    all_regions[country] = {
+                        "country": country,
                     "region": event.region,
                     "city": event.city,
-                    "count": 0
-                }
+                        "count": 0
+                    }
             all_regions[country]["count"] += 1
     
     # Sort by count and limit
@@ -576,13 +598,13 @@ async def unique_users_analytics(
     
     # Get top users by events
     top_users_by_events = [
-        schemas.UniqueUserData(
+            schemas.UniqueUserData(
             session_id=user_id,
             first_seen=user_first_seen.get(user_id),
             last_seen=user_last_seen.get(user_id),
             total_events=count,
-            company_id=company_id,
-            company_name=company_name
+                company_id=company_id,
+                company_name=company_name
         )
         for user_id, count in sorted(user_event_counts.items(), key=lambda x: x[1], reverse=True)[:limit]
     ]
@@ -594,16 +616,16 @@ async def unique_users_analytics(
     ]
     recent_users_data.sort(key=lambda x: x[1] or datetime.min, reverse=True)
     recent_users = [
-        schemas.UniqueUserData(
+            schemas.UniqueUserData(
             session_id=session_id,
             first_seen=user_first_seen.get(session_id),
             last_seen=last_seen,
             total_events=total_events,
-            company_id=company_id,
-            company_name=company_name
+                company_id=company_id,
+                company_name=company_name
         ) 
         for session_id, last_seen, total_events in recent_users_data[:limit]
-    ]
+        ]
 
     return schemas.UniqueUsersResponse(
         total_unique_users=int(total_unique_users),
@@ -613,3 +635,70 @@ async def unique_users_analytics(
         recent_users=recent_users,
         top_users_by_events=top_users_by_events
     ) 
+
+
+@router.patch("/client-companies/{company_id}/twitter-status")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@log_sensitive_operations("update_twitter_status")
+async def update_twitter_status(
+    company_id: uuid.UUID = Path(..., description="The UUID of the client company"),
+    twitter_update: schemas.TwitterStatusUpdate = ...,
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Update the Twitter integration status for a company."""
+    # Verify company ownership
+    company = crud.get_client_company_by_id(db, company_id=company_id)
+    if not company or company.platform_user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this company"
+        )
+    
+    # Update the Twitter status
+    company.is_twitter_added = twitter_update.is_twitter_added
+    db.commit()
+    db.refresh(company)
+    
+    return {
+        "message": f"Twitter status updated successfully",
+        "company_id": str(company_id),
+        "is_twitter_added": twitter_update.is_twitter_added,
+        "company_name": company.name
+    }
+
+
+@router.get("/twitter-status")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+async def get_twitter_status_summary(
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Get Twitter integration status summary for the current user."""
+    # Get all companies owned by this user
+    companies = crud.get_client_companies_by_platform_user(db, current_user.id)
+    
+    # Calculate Twitter integration statistics
+    total_companies = len(companies)
+    companies_with_twitter = sum(1 for company in companies if company.is_twitter_added)
+    has_twitter_integration = companies_with_twitter > 0
+    
+    # Get companies with Twitter integration
+    twitter_companies = [
+        {
+            "id": str(company.id),
+            "name": company.name,
+            "is_twitter_added": company.is_twitter_added,
+            "created_at": company.created_at
+        }
+        for company in companies if company.is_twitter_added
+    ]
+    
+    return {
+        "has_twitter_integration": has_twitter_integration,
+        "total_companies": total_companies,
+        "companies_with_twitter": companies_with_twitter,
+        "companies_without_twitter": total_companies - companies_with_twitter,
+        "twitter_companies": twitter_companies,
+        "twitter_integration_rate": (companies_with_twitter / total_companies * 100) if total_companies > 0 else 0
+    } 

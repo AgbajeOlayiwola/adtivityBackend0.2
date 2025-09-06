@@ -55,6 +55,7 @@ class ClientCompany(Base):
     name = Column(String, index=True, nullable=False)
     api_key_hash = Column(String, nullable=False, unique=True)
     is_active = Column(Boolean, default=True)
+    is_twitter_added = Column(Boolean, default=False, comment="Whether Twitter integration has been added")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # A foreign key to link this company to a PlatformUser.
