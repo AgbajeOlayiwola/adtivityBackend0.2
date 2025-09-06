@@ -91,6 +91,13 @@ async def receive_sdk_event(
             # Process through unified analytics service (aggregation system)
             unified_service = UnifiedAnalyticsService(db)
             
+            # Extract geographic data from properties if not available at top level
+            properties = payload.properties or {}
+            country = payload.country or properties.get("country")
+            region = payload.region or properties.get("region") 
+            city = payload.city or properties.get("city")
+            ip_address = payload.ip_address or properties.get("ip_address")
+            
             # Prepare event data for the unified service
             event_data = {
                 "event_name": payload.eventName or "unknown",
@@ -98,11 +105,11 @@ async def receive_sdk_event(
                 "user_id": payload.user_id,
                 "anonymous_id": payload.anonymous_id,
                 "session_id": payload.session_id,
-                "properties": payload.properties or {},
-                "country": payload.country,
-                "region": payload.region,
-                "city": payload.city,
-                "ip_address": payload.ip_address,
+                "properties": properties,
+                "country": country,
+                "region": region,
+                "city": city,
+                "ip_address": ip_address,
                 "timestamp": payload.timestamp,
                 "is_web3_event": is_web3_event
             }

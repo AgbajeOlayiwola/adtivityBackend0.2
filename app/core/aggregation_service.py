@@ -62,6 +62,20 @@ class AggregationService:
         event_name = event_data.get("event_name", "unknown")
         event_type = event_data.get("event_type", "unknown")
         
+        # Normalize event names for common types
+        if event_type in ["page", "PAGE_VISIT"] and event_name == "unknown":
+            event_name = "page_view"
+        elif event_type in ["track", "TRACK"] and event_name == "unknown":
+            event_name = "custom_event"
+        elif event_type == "LOCATION_DATA" and event_name == "unknown":
+            event_name = "location_data_captured"
+        elif event_name == "unknown":
+            event_name = f"{event_type}_event"
+        
+        # Use company_id as campaign_id if not provided (for better organization)
+        if campaign_id == "default":
+            campaign_id = f"company_{company_id}"
+        
         # Create raw event if Enterprise plan
         raw_event_id = None
         if plan.plan_tier == 3:  # Enterprise
