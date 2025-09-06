@@ -216,63 +216,17 @@ async def sessions_summary(
     since = datetime.now(timezone.utc) - timedelta(days=days)
     end_date = datetime.now(timezone.utc)
 
-    # Use original tables directly instead of aggregation system
-    from sqlalchemy import and_, func
+    # Use unified analytics service to get data from aggregation system
+    from ..core.unified_analytics_service import UnifiedAnalyticsService
+    unified_service = UnifiedAnalyticsService(db)
     
-    # Get sessions data from original events and web3_events tables
-    analytics_results = {}
-    
-    for company_id in company_ids:
-        # Get events from original events table
-        events_query = db.query(models.Event).filter(
-            and_(
-                models.Event.client_company_id == company_id,
-                models.Event.timestamp >= since,
-                models.Event.timestamp <= end_date
-            )
-        )
-        
-        # Get Web3 events from original web3_events table
-        web3_events_query = db.query(models.Web3Event).filter(
-            and_(
-                models.Web3Event.client_company_id == company_id,
-                models.Web3Event.timestamp >= since,
-                models.Web3Event.timestamp <= end_date
-            )
-        )
-        
-        # Execute queries
-        events = events_query.all()
-        web3_events = web3_events_query.all()
-        
-        # Calculate sessions data
-        all_events = events + web3_events
-        sessions = {}
-        
-        for event in all_events:
-            session_id = event.session_id
-            if session_id:
-                if session_id not in sessions:
-                                    sessions[session_id] = {
-                    "session_id": session_id,
-                    "first_seen": event.timestamp,
-                    "last_seen": event.timestamp,
-                    "events": 0,
-                    "user_id": event.user_id
-                }
-            sessions[session_id]["events"] += 1
-            if event.timestamp < sessions[session_id]["first_seen"]:
-                sessions[session_id]["first_seen"] = event.timestamp
-            if event.timestamp > sessions[session_id]["last_seen"]:
-                sessions[session_id]["last_seen"] = event.timestamp
-        
-        analytics_results[company_id] = {
-            "sessions": list(sessions.values()),
-            "total_sessions": len(sessions),
-            "total_events": len(all_events),
-            "data_source": "original_tables",
-            "subscription_tier": "basic"
-        }
+    # Get sessions analytics using aggregation system
+    analytics_results = unified_service.get_analytics_data(
+        company_ids=company_ids,
+        start_date=since,
+        end_date=end_date,
+        data_type="sessions"
+    )
     
     # Aggregate results across all companies
     total_sessions = 0
