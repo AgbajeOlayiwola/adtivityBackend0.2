@@ -657,7 +657,24 @@ class CompanyTwitterResponse(CompanyTwitterBase):
     profile_image_url: str | None = None
     verified: bool
     last_updated: datetime
-    created_at: datetime
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """Convert ORM object to response schema, handling UUID conversion."""
+        data = {
+            'id': str(obj.id),
+            'company_id': str(obj.company_id),
+            'twitter_handle': obj.twitter_handle,
+            'description': obj.description,
+            'twitter_user_id': str(obj.twitter_user_id) if obj.twitter_user_id else None,
+            'followers_count': obj.followers_count,
+            'following_count': obj.following_count,
+            'tweets_count': obj.tweets_count,
+            'profile_image_url': obj.profile_image_url,
+            'verified': obj.verified,
+            'last_updated': obj.last_updated
+        }
+        return cls(**data)
     
     class Config:
         from_attributes = True
