@@ -191,8 +191,8 @@ class AggregationService:
             )
             daily_agg.conversion_rate = conversion_events / total_events if total_events > 0 else 0.0
         
-        # Don't commit here - let the calling service handle the commit
-        # self.db.commit()
+        # Commit the aggregation updates
+        self.db.commit()
     
     async def _update_hourly_aggregation(
         self, company_id: str, campaign_id: str, event_data: Dict[str, Any], plan: SubscriptionPlan
@@ -294,8 +294,8 @@ class AggregationService:
             )
             hourly_agg.conversion_rate = conversion_events / total_events if total_events > 0 else 0.0
         
-        # Don't commit here - let the calling service handle the commit
-        # self.db.commit()
+        # Commit the aggregation updates
+        self.db.commit()
     
     async def aggregate_existing_data(
         self, company_id: str, campaign_id: str, start_date: date, end_date: date

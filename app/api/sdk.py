@@ -117,9 +117,6 @@ async def receive_sdk_event(
             # Process through aggregation system
             await unified_service.process_sdk_event(str(company.id), event_data)
             
-            # Commit the event to database
-            db.commit()
-
             processed_count += 1
 
         logger.info(f"Successfully processed {processed_count} events for company {company.id}")
