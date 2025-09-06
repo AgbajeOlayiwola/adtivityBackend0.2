@@ -9,6 +9,7 @@ from ..core.database import get_db
 from ..core.security import get_current_platform_user
 from ..core.twitter_service import twitter_service
 from ..crud.twitter import twitter_crud
+from .. import crud
 from ..schemas import (
     CompanyTwitterCreate, CompanyTwitterResponse, CompanyTwitterUpdate,
     TwitterTweetResponse, TwitterFollowerResponse, TwitterAnalyticsResponse,
@@ -75,7 +76,6 @@ async def create_twitter_account(
     twitter_account.last_updated = datetime.utcnow()
     
     # Update company's Twitter integration status
-    from .. import crud
     company = crud.get_client_company_by_id(db, twitter_data.company_id)
     if company:
         company.is_twitter_added = True
@@ -127,7 +127,6 @@ async def delete_twitter_account(
         raise HTTPException(status_code=404, detail="Twitter account not found")
     
     # Check if company has any other Twitter accounts
-    from .. import crud
     remaining_twitter_accounts = twitter_crud.get_company_twitter_by_company(db, company_id)
     
     # Update company's Twitter integration status
