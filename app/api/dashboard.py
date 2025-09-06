@@ -536,6 +536,8 @@ async def unique_users_analytics(
     # Calculate unique users and events
     unique_users = set()
     user_event_counts = {}
+    user_first_seen = {}
+    user_last_seen = {}
     users_per_day = {}
     recent_users = []
     total_events = len(events)
@@ -546,7 +548,15 @@ async def unique_users_analytics(
             unique_users.add(event.session_id)
             if event.session_id not in user_event_counts:
                 user_event_counts[event.session_id] = 0
+                user_first_seen[event.session_id] = event.timestamp
+                user_last_seen[event.session_id] = event.timestamp
             user_event_counts[event.session_id] += 1
+            
+            # Update first_seen and last_seen
+            if event.timestamp < user_first_seen[event.session_id]:
+                user_first_seen[event.session_id] = event.timestamp
+            if event.timestamp > user_last_seen[event.session_id]:
+                user_last_seen[event.session_id] = event.timestamp
         
         # Count users per day
         event_date = event.timestamp.date()
@@ -568,8 +578,8 @@ async def unique_users_analytics(
     top_users_by_events = [
         schemas.UniqueUserData(
             session_id=user_id,
-            first_seen=None,  # Not available from raw events
-            last_seen=None,   # Not available from raw events
+            first_seen=user_first_seen.get(user_id),
+            last_seen=user_last_seen.get(user_id),
             total_events=count,
             company_id=company_id,
             company_name=company_name
@@ -577,18 +587,22 @@ async def unique_users_analytics(
         for user_id, count in sorted(user_event_counts.items(), key=lambda x: x[1], reverse=True)[:limit]
     ]
     
-    # Get recent users (last 10 unique sessions)
-    recent_sessions = list(unique_users)[-10:] if unique_users else []
+    # Get recent users (sorted by last_seen, most recent first)
+    recent_users_data = [
+        (session_id, user_last_seen.get(session_id), user_event_counts.get(session_id, 0))
+        for session_id in unique_users
+    ]
+    recent_users_data.sort(key=lambda x: x[1] or datetime.min, reverse=True)
     recent_users = [
         schemas.UniqueUserData(
             session_id=session_id,
-            first_seen=None,  # Not available from raw events
-            last_seen=None,   # Not available from raw events
-            total_events=user_event_counts.get(session_id, 0),
+            first_seen=user_first_seen.get(session_id),
+            last_seen=last_seen,
+            total_events=total_events,
             company_id=company_id,
             company_name=company_name
         ) 
-        for session_id in recent_sessions
+        for session_id, last_seen, total_events in recent_users_data[:limit]
     ]
 
     return schemas.UniqueUsersResponse(
