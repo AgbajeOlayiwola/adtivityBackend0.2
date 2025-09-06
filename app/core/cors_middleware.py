@@ -110,8 +110,17 @@ class CustomCORSMiddleware(BaseHTTPMiddleware):
             return response
         
         # Handle actual requests
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception as e:
+            # Handle errors and still set CORS headers
+            response = StarletteResponse(
+                content=f"Internal server error: {str(e)}",
+                status_code=500,
+                headers={"Content-Type": "text/plain"}
+            )
         
+        # Always set CORS headers, even for error responses
         if origin and origin in self.restricted_origins:
             response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
