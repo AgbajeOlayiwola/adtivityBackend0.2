@@ -186,9 +186,33 @@ class ClientCompanyUpdate(BaseModel):
     All fields are optional to allow for partial updates.
     """
     name: Optional[str] = None
+    is_twitter_added: Optional[bool] = None
 
     class Config:
         extra = "ignore"
+
+class TwitterStatusUpdate(BaseModel):
+    """
+    Schema for updating Twitter integration status.
+    """
+    is_twitter_added: bool = Field(..., description="Whether Twitter integration has been added")
+
+class UserProfileResponse(BaseModel):
+    """
+    Enhanced user profile response that includes Twitter status information.
+    """
+    id: uuid.UUID
+    email: str
+    name: Optional[str] = None
+    phone_number: Optional[str] = None
+    is_active: bool
+    is_admin: bool
+    created_at: datetime
+    last_login: Optional[datetime] = None
+    companies: List[ClientCompany] = []
+    has_twitter_integration: bool = False  # True if any company has Twitter added
+    total_companies: int = 0
+    companies_with_twitter: int = 0
         
 class ClientCompany(ClientCompanyBase):
     """
@@ -198,6 +222,7 @@ class ClientCompany(ClientCompanyBase):
     id: uuid.UUID
     platform_user_id: uuid.UUID
     is_active: bool
+    is_twitter_added: bool = False
     created_at: datetime
 
     class Config:
