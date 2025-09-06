@@ -74,6 +74,12 @@ async def create_twitter_account(
     twitter_account.verified = user_data.verified
     twitter_account.last_updated = datetime.utcnow()
     
+    # Update company's Twitter integration status
+    from .. import crud
+    company = crud.get_client_company_by_id(db, twitter_data.company_id)
+    if company:
+        company.is_twitter_added = True
+    
     db.commit()
     db.refresh(twitter_account)
     
@@ -116,9 +122,20 @@ async def delete_twitter_account(
     current_user: PlatformUser = Depends(get_current_platform_user)
 ):
     """Delete Twitter account."""
-    success = twitter_crud.delete_company_twitter(db, twitter_id)
-    if not success:
+    company_id = twitter_crud.delete_company_twitter(db, twitter_id)
+    if not company_id:
         raise HTTPException(status_code=404, detail="Twitter account not found")
+    
+    # Check if company has any other Twitter accounts
+    from .. import crud
+    remaining_twitter_accounts = twitter_crud.get_company_twitter_by_company(db, company_id)
+    
+    # Update company's Twitter integration status
+    company = crud.get_client_company_by_id(db, company_id)
+    if company:
+        # Set to False if no Twitter accounts remain, True if others exist
+        company.is_twitter_added = remaining_twitter_accounts is not None
+        db.commit()
     
     return {"message": "Twitter account deleted successfully"}
 
