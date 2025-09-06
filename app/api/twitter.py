@@ -83,7 +83,8 @@ async def create_twitter_account(
     db.commit()
     db.refresh(twitter_account)
     
-    return twitter_account
+    # Convert to response schema with proper UUID handling
+    return CompanyTwitterResponse.from_orm(twitter_account)
 
 
 @router.get("/accounts/{twitter_id}", response_model=CompanyTwitterResponse)
@@ -97,7 +98,8 @@ async def get_twitter_account(
     if not twitter_account:
         raise HTTPException(status_code=404, detail="Twitter account not found")
     
-    return twitter_account
+    # Convert to response schema with proper UUID handling
+    return CompanyTwitterResponse.from_orm(twitter_account)
 
 
 @router.put("/accounts/{twitter_id}", response_model=CompanyTwitterResponse)
@@ -112,7 +114,8 @@ async def update_twitter_account(
     if not twitter_account:
         raise HTTPException(status_code=404, detail="Twitter account not found")
     
-    return twitter_account
+    # Convert to response schema with proper UUID handling
+    return CompanyTwitterResponse.from_orm(twitter_account)
 
 
 @router.delete("/accounts/{twitter_id}")
