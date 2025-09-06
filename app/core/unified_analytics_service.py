@@ -283,8 +283,23 @@ class UnifiedAnalyticsService:
         
         total_events = sum(sum(data.event_counts.values()) for data in daily_data)
         
+        # Convert aggregated data to individual event records
+        events = []
+        for data in daily_data:
+            for event_name, count in data.event_counts.items():
+                for i in range(count):
+                    events.append({
+                        "id": f"{data.id}-{event_name}-{i}",
+                        "event_name": event_name,
+                        "timestamp": data.analytics_date,
+                        "event_type": "page_view" if "page" in event_name.lower() else "custom",
+                        "properties": {},
+                        "data_source": "daily_aggregation"
+                    })
+        
         return {
             "total_events": total_events,
+            "events": events,
             "data_source": "daily_aggregation"
         }
     
