@@ -214,6 +214,7 @@ class UnifiedAnalyticsService:
         daily_data = self.db.query(CampaignAnalyticsDaily).filter(
             and_(
                 CampaignAnalyticsDaily.company_id == uuid.UUID(company_id),
+                CampaignAnalyticsDaily.campaign_id == f"company_{company_id}",
                 CampaignAnalyticsDaily.analytics_date >= start_date.date(),
                 CampaignAnalyticsDaily.analytics_date <= end_date.date()
             )
@@ -259,6 +260,7 @@ class UnifiedAnalyticsService:
         hourly_data = self.db.query(CampaignAnalyticsHourly).filter(
             and_(
                 CampaignAnalyticsHourly.company_id == uuid.UUID(company_id),
+                CampaignAnalyticsHourly.campaign_id == f"company_{company_id}",
                 CampaignAnalyticsHourly.analytics_date >= start_date.date(),
                 CampaignAnalyticsHourly.analytics_date <= end_date.date()
             )
@@ -276,6 +278,7 @@ class UnifiedAnalyticsService:
         daily_data = self.db.query(CampaignAnalyticsDaily).filter(
             and_(
                 CampaignAnalyticsDaily.company_id == uuid.UUID(company_id),
+                CampaignAnalyticsDaily.campaign_id == f"company_{company_id}",
                 CampaignAnalyticsDaily.analytics_date >= start_date.date(),
                 CampaignAnalyticsDaily.analytics_date <= end_date.date()
             )
@@ -369,6 +372,7 @@ class UnifiedAnalyticsService:
         daily_data = self.db.query(CampaignAnalyticsDaily).filter(
             and_(
                 CampaignAnalyticsDaily.company_id == uuid.UUID(company_id),
+                CampaignAnalyticsDaily.campaign_id == f"company_{company_id}",
                 CampaignAnalyticsDaily.analytics_date >= start_date.date(),
                 CampaignAnalyticsDaily.analytics_date <= end_date.date()
             )
@@ -492,6 +496,7 @@ class UnifiedAnalyticsService:
         daily_data = self.db.query(CampaignAnalyticsDaily).filter(
             and_(
                 CampaignAnalyticsDaily.company_id == uuid.UUID(company_id),
+                CampaignAnalyticsDaily.campaign_id == f"company_{company_id}",
                 CampaignAnalyticsDaily.analytics_date >= start_date.date(),
                 CampaignAnalyticsDaily.analytics_date <= end_date.date()
             )
