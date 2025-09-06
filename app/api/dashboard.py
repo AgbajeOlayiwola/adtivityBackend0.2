@@ -370,14 +370,14 @@ async def top_regions(
     
     for event in events:
         country = event.country
-            if country:
-                if country not in all_regions:
-                    all_regions[country] = {
-                        "country": country,
+        if country:
+            if country not in all_regions:
+                all_regions[country] = {
+                    "country": country,
                     "region": event.region,
                     "city": event.city,
-                        "count": 0
-                    }
+                    "count": 0
+                }
             all_regions[country]["count"] += 1
     
     # Sort by count and limit
