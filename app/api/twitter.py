@@ -321,7 +321,7 @@ async def get_company_mentions(
     return mentions
 
 
-@router.get("/accounts/{twitter_id}/mentions/analytics", response_model=MentionAnalyticsResponse)
+@router.get("/accounts/{twitter_id}/mentions/analytics")
 async def get_mention_analytics(
     twitter_id: UUID,
     start_date: date = Query(...),
@@ -329,9 +329,48 @@ async def get_mention_analytics(
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
 ):
-    """Get mention analytics for a company Twitter account within a date range."""
+    """Get mention analytics for a company Twitter account within a date range in frontend-compatible format."""
     analytics = twitter_crud.get_mention_analytics(db, twitter_id, start_date, end_date)
-    return analytics
+    
+    # Transform to frontend-compatible format
+    days_diff = (end_date - start_date).days + 1
+    
+    # Convert mentions_by_date to array format expected by frontend
+    mentions_by_date_array = []
+    for i in range(days_diff):
+        current_date = start_date + timedelta(days=i)
+        day_data = analytics['mentions_by_date'].get(current_date, {
+            'count': 0, 'likes': 0, 'retweets': 0, 'replies': 0
+        })
+        mentions_by_date_array.append({
+            "date": f"Day {i + 1}",
+            "mentions": day_data['count'],
+            "likes": day_data['likes']
+        })
+    
+    # Engagement by type
+    engagement_by_type = [
+        {"name": "Likes", "value": analytics['total_likes']},
+        {"name": "Comments", "value": analytics['total_replies']},
+        {"name": "Shares", "value": analytics['total_retweets']}
+    ]
+    
+    # Top topics (mock data for now - you can implement real topic analysis later)
+    top_topics = [
+        {"name": "Product Launch", "mentions": max(1, analytics['total_mentions'] // 4)},
+        {"name": "Customer Service", "mentions": max(1, analytics['total_mentions'] // 6)},
+        {"name": "New Features", "mentions": max(1, analytics['total_mentions'] // 8)},
+        {"name": "Company News", "mentions": max(1, analytics['total_mentions'] // 10)}
+    ]
+    
+    return {
+        "total_mentions": analytics['total_mentions'],
+        "total_likes": analytics['total_likes'],
+        "total_followers": 0,  # This would need to be calculated from TwitterAnalytics table
+        "mentions_by_date": mentions_by_date_array,
+        "engagement_by_type": engagement_by_type,
+        "top_topics": top_topics
+    }
 
 
 @router.post("/mentions/search", response_model=List[MentionResponse])
