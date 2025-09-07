@@ -211,6 +211,8 @@ class TwitterCRUD:
             mentions_by_date[date_key]['replies'] += mention.reply_count
         
         return {
+            'start_date': start_date,
+            'end_date': end_date,
             'total_mentions': total_mentions,
             'total_likes': total_likes,
             'total_retweets': total_retweets,
