@@ -95,7 +95,7 @@ class TwitterService:
                         tweets_count=metrics.get("tweet_count", 0),
                         created_at=datetime.fromisoformat(user_data.get("created_at").replace("Z", "+00:00")) if user_data.get("created_at") else None
                     )
-                    
+                
                     # Cache the result
                     self.user_cache[cache_key] = (profile_data, time.time())
                     print(f"✅ Fetched and cached @{username}")
@@ -122,7 +122,7 @@ class TwitterService:
                 
                 else:
                     print(f"❌ Twitter API Error {response.status_code} for @{username}: {response.text[:100]}")
-                    return None
+                return None
                 
         except Exception as e:
             print(f"Error fetching Twitter user {username}: {e}")
@@ -170,7 +170,7 @@ class TwitterService:
                 return search_results
             
             # No results found
-            return []
+                return []
                 
         except Exception as e:
             print(f"Error searching Twitter users for '{query}': {e}")

@@ -752,6 +752,19 @@ class TwitterAnalyticsResponse(TwitterAnalyticsBase):
         from_attributes = True
 
 
+class TwitterAnalyticsDashboardResponse(BaseModel):
+    """Twitter analytics response for dashboard frontend."""
+    total_mentions: int = 0
+    total_likes: int = 0
+    total_followers: int = 0
+    mentions_by_date: List[Dict[str, Any]] = []
+    engagement_by_type: List[Dict[str, Any]] = []
+    top_topics: List[Dict[str, Any]] = []
+    
+    class Config:
+        from_attributes = True
+
+
 class TwitterProfileData(BaseModel):
     """Twitter profile data from API."""
     id: str

@@ -701,4 +701,5 @@ async def get_twitter_status_summary(
         "companies_without_twitter": total_companies - companies_with_twitter,
         "twitter_companies": twitter_companies,
         "twitter_integration_rate": (companies_with_twitter / total_companies * 100) if total_companies > 0 else 0
-    } 
+    }
+
