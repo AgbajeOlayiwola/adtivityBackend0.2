@@ -4,6 +4,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
+from uuid import UUID
 
 from ..core.database import get_db
 from ..core.security import get_current_platform_user
@@ -89,7 +90,7 @@ async def create_twitter_account(
 
 @router.get("/accounts/{twitter_id}", response_model=CompanyTwitterResponse)
 async def get_twitter_account(
-    twitter_id: int,
+    twitter_id: UUID,
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
 ):
@@ -104,7 +105,7 @@ async def get_twitter_account(
 
 @router.put("/accounts/{twitter_id}", response_model=CompanyTwitterResponse)
 async def update_twitter_account(
-    twitter_id: int,
+    twitter_id: UUID,
     update_data: CompanyTwitterUpdate,
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
@@ -120,7 +121,7 @@ async def update_twitter_account(
 
 @router.delete("/accounts/{twitter_id}")
 async def delete_twitter_account(
-    twitter_id: int,
+    twitter_id: UUID,
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
 ):
@@ -271,7 +272,7 @@ async def sync_twitter_data(
 
 @router.get("/accounts/{twitter_id}/tweets", response_model=List[TwitterTweetResponse])
 async def get_company_tweets(
-    twitter_id: int,
+    twitter_id: UUID,
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
@@ -283,7 +284,7 @@ async def get_company_tweets(
 
 @router.get("/accounts/{twitter_id}/followers", response_model=List[TwitterFollowerResponse])
 async def get_company_followers(
-    twitter_id: int,
+    twitter_id: UUID,
     limit: int = Query(1000, ge=1, le=5000),
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
@@ -310,7 +311,7 @@ async def search_hashtag(
 # New Mention-related Endpoints
 @router.get("/accounts/{twitter_id}/mentions", response_model=List[MentionResponse])
 async def get_company_mentions(
-    twitter_id: int,
+    twitter_id: UUID,
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
@@ -322,7 +323,7 @@ async def get_company_mentions(
 
 @router.get("/accounts/{twitter_id}/mentions/analytics", response_model=MentionAnalyticsResponse)
 async def get_mention_analytics(
-    twitter_id: int,
+    twitter_id: UUID,
     start_date: date = Query(...),
     end_date: date = Query(...),
     db: Session = Depends(get_db),

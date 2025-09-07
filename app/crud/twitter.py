@@ -4,6 +4,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, func
 from datetime import datetime, date, timedelta
+from uuid import UUID
 from ..models import (
     CompanyTwitter, TwitterTweet, TwitterFollower, 
     HashtagMention, TwitterAnalytics, MentionNotification
@@ -26,7 +27,7 @@ class TwitterCRUD:
         db.refresh(db_twitter)
         return db_twitter
     
-    def get_company_twitter(self, db: Session, twitter_id: int) -> Optional[CompanyTwitter]:
+    def get_company_twitter(self, db: Session, twitter_id: UUID) -> Optional[CompanyTwitter]:
         """Get company Twitter account by ID."""
         return db.query(CompanyTwitter).filter(CompanyTwitter.id == twitter_id).first()
     
@@ -38,7 +39,7 @@ class TwitterCRUD:
         """Get company Twitter account by company ID."""
         return db.query(CompanyTwitter).filter(CompanyTwitter.company_id == company_id).first()
     
-    def update_company_twitter(self, db: Session, twitter_id: int, update_data: CompanyTwitterUpdate) -> Optional[CompanyTwitter]:
+    def update_company_twitter(self, db: Session, twitter_id: UUID, update_data: CompanyTwitterUpdate) -> Optional[CompanyTwitter]:
         """Update company Twitter account."""
         db_twitter = self.get_company_twitter(db, twitter_id)
         if db_twitter:
@@ -49,7 +50,7 @@ class TwitterCRUD:
             db.refresh(db_twitter)
         return db_twitter
     
-    def delete_company_twitter(self, db: Session, twitter_id: int) -> Optional[str]:
+    def delete_company_twitter(self, db: Session, twitter_id: UUID) -> Optional[str]:
         """Delete company Twitter account and return company_id."""
         db_twitter = self.get_company_twitter(db, twitter_id)
         if db_twitter:
@@ -72,7 +73,7 @@ class TwitterCRUD:
         """Get tweet by Twitter ID."""
         return db.query(TwitterTweet).filter(TwitterTweet.tweet_id == tweet_id).first()
     
-    def get_company_tweets(self, db: Session, company_twitter_id: int, limit: int = 100) -> List[TwitterTweet]:
+    def get_company_tweets(self, db: Session, company_twitter_id: UUID, limit: int = 100) -> List[TwitterTweet]:
         """Get recent tweets for a company."""
         return db.query(TwitterTweet)\
             .filter(TwitterTweet.company_twitter_id == company_twitter_id)\
@@ -101,7 +102,7 @@ class TwitterCRUD:
         db.refresh(db_follower)
         return db_follower
     
-    def get_follower_by_id(self, db: Session, follower_id: str, company_twitter_id: int) -> Optional[TwitterFollower]:
+    def get_follower_by_id(self, db: Session, follower_id: str, company_twitter_id: UUID) -> Optional[TwitterFollower]:
         """Get follower by Twitter ID and company."""
         return db.query(TwitterFollower)\
             .filter(and_(
@@ -110,7 +111,7 @@ class TwitterCRUD:
             ))\
             .first()
     
-    def get_company_followers(self, db: Session, company_twitter_id: int, limit: int = 1000) -> List[TwitterFollower]:
+    def get_company_followers(self, db: Session, company_twitter_id: UUID, limit: int = 1000) -> List[TwitterFollower]:
         """Get followers for a company."""
         return db.query(TwitterFollower)\
             .filter(TwitterFollower.company_twitter_id == company_twitter_id)\
@@ -118,7 +119,7 @@ class TwitterCRUD:
             .limit(limit)\
             .all()
     
-    def update_follower_metrics(self, db: Session, follower_id: str, company_twitter_id: int, metrics: Dict[str, Any]) -> Optional[TwitterFollower]:
+    def update_follower_metrics(self, db: Session, follower_id: str, company_twitter_id: UUID, metrics: Dict[str, Any]) -> Optional[TwitterFollower]:
         """Update follower metrics."""
         db_follower = self.get_follower_by_id(db, follower_id, company_twitter_id)
         if db_follower:
@@ -161,7 +162,7 @@ class TwitterCRUD:
             .limit(limit)\
             .all()
     
-    def get_company_mentions(self, db: Session, company_twitter_id: int, limit: int = 100) -> List[TwitterTweet]:
+    def get_company_mentions(self, db: Session, company_twitter_id: UUID, limit: int = 100) -> List[TwitterTweet]:
         """Get all mentions of a company (tweets that mention the company's handle)."""
         return db.query(TwitterTweet)\
             .filter(TwitterTweet.mentions.isnot(None))\
@@ -170,7 +171,7 @@ class TwitterCRUD:
             .limit(limit)\
             .all()
     
-    def get_mentions_by_date_range(self, db: Session, company_twitter_id: int, start_date: datetime, end_date: datetime) -> List[TwitterTweet]:
+    def get_mentions_by_date_range(self, db: Session, company_twitter_id: UUID, start_date: datetime, end_date: datetime) -> List[TwitterTweet]:
         """Get mentions of a company within a date range."""
         return db.query(TwitterTweet)\
             .filter(TwitterTweet.mentions.isnot(None))\
@@ -180,7 +181,7 @@ class TwitterCRUD:
             .order_by(desc(TwitterTweet.created_at))\
             .all()
     
-    def get_mention_analytics(self, db: Session, company_twitter_id: int, start_date: date, end_date: date) -> Dict[str, Any]:
+    def get_mention_analytics(self, db: Session, company_twitter_id: UUID, start_date: date, end_date: date) -> Dict[str, Any]:
         """Get mention analytics for a date range."""
         mentions = self.get_mentions_by_date_range(
             db, company_twitter_id, 
@@ -274,7 +275,7 @@ class TwitterCRUD:
         db.refresh(db_analytics)
         return db_analytics
     
-    def get_analytics_by_date(self, db: Session, company_twitter_id: int, target_date: date) -> Optional[TwitterAnalytics]:
+    def get_analytics_by_date(self, db: Session, company_twitter_id: UUID, target_date: date) -> Optional[TwitterAnalytics]:
         """Get analytics for a specific date."""
         return db.query(TwitterAnalytics)\
             .filter(and_(
@@ -283,7 +284,7 @@ class TwitterCRUD:
             ))\
             .first()
     
-    def get_analytics_range(self, db: Session, company_twitter_id: int, start_date: date, end_date: date) -> List[TwitterAnalytics]:
+    def get_analytics_range(self, db: Session, company_twitter_id: UUID, start_date: date, end_date: date) -> List[TwitterAnalytics]:
         """Get analytics for a date range."""
         return db.query(TwitterAnalytics)\
             .filter(and_(
