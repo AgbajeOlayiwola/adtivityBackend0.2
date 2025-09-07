@@ -767,16 +767,16 @@ class TwitterAnalyticsDashboardResponse(BaseModel):
 
 class TwitterProfileData(BaseModel):
     """Twitter profile data from API."""
-    id: str
-    username: str
-    name: str
-    description: str = None
-    profile_image_url: str = None
+    id: Optional[str] = None
+    username: Optional[str] = None
+    name: Optional[str] = None
+    description: Optional[str] = None
+    profile_image_url: Optional[str] = None
     verified: bool = False
-    followers_count: int
-    following_count: int
-    tweets_count: int
-    created_at: datetime = None
+    followers_count: int = 0
+    following_count: int = 0
+    tweets_count: int = 0
+    created_at: Optional[datetime] = None
 
 
 class TwitterSyncRequest(BaseModel):

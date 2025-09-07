@@ -502,14 +502,27 @@ async def get_twitter_user_suggestions(
         
         users = await twitter_service.search_users_autocomplete(query.strip(), max_results)
         
+        # Filter out any users with missing required data
+        valid_users = []
+        for user in users:
+            if user and user.get("id") and user.get("username"):
+                valid_users.append(user)
+        
         return {
-            "users": users,
+            "users": valid_users,
             "query": query,
-            "total_results": len(users)
+            "total_results": len(valid_users)
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting suggestions: {str(e)}")
+        print(f"Error fetching Twitter user {query}: {e}")
+        # Return empty results instead of throwing error to prevent frontend crashes
+        return {
+            "users": [],
+            "query": query,
+            "total_results": 0,
+            "error": "Unable to fetch suggestions at this time"
+        }
 
 
 @router.get("/users/quick-validate/{handle}")

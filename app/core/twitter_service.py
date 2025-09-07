@@ -83,12 +83,13 @@ class TwitterService:
                     # Extract metrics
                     metrics = user_data.get("public_metrics", {})
                     
+                    # Handle cases where Twitter API returns incomplete data
                     profile_data = TwitterProfileData(
-                        id=user_data.get("id"),
-                        username=user_data.get("username"),
-                        name=user_data.get("name"),
-                        description=user_data.get("description"),
-                        profile_image_url=user_data.get("profile_image_url"),
+                        id=user_data.get("id") or None,
+                        username=user_data.get("username") or None,
+                        name=user_data.get("name") or None,
+                        description=user_data.get("description") or None,
+                        profile_image_url=user_data.get("profile_image_url") or None,
                         verified=user_data.get("verified", False),
                         followers_count=metrics.get("followers_count", 0),
                         following_count=metrics.get("following_count", 0),
@@ -140,14 +141,14 @@ class TwitterService:
             # Strategy 1: Try exact username lookup first (works with basic API access)
             # GET /2/users/by/username/:username
             user_data = await self.get_user_by_username(query)
-            if user_data:
+            if user_data and user_data.id and user_data.username:
                 # Convert TwitterProfileData to dict format for autocomplete
                 user_dict = {
                     "id": user_data.id,
                     "username": user_data.username,
-                    "name": user_data.name,
+                    "name": user_data.name or "",
                     "description": user_data.description or "",
-                    "profile_image_url": user_data.profile_image_url,
+                    "profile_image_url": user_data.profile_image_url or "",
                     "verified": user_data.verified,
                     "followers_count": user_data.followers_count,
                     "following_count": user_data.following_count,
