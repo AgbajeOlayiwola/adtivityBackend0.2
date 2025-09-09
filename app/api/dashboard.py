@@ -4,7 +4,7 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
 import uuid
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, and_
 from datetime import datetime, timedelta, timezone, date
 
 from ..core.database import get_db
@@ -703,3 +703,505 @@ async def get_twitter_status_summary(
         "twitter_integration_rate": (companies_with_twitter / total_companies * 100) if total_companies > 0 else 0
     }
 
+
+# Web3 Analytics Endpoints
+@router.get("/analytics/web3/overview")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@validate_query_parameters(max_days=365)
+@log_sensitive_operations("web3_analytics_overview")
+async def web3_analytics_overview(
+    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Get comprehensive Web3 analytics overview integrated into main dashboard."""
+    # Resolve company IDs owned by user
+    if company_id:
+        company = crud.get_client_company_by_id(db, company_id=company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized for this company")
+        company_ids = [str(company_id)]
+    else:
+        company_ids = [str(c.id) for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
+        if not company_ids:
+            return {
+                "total_events": 0,
+                "total_wallets": 0,
+                "total_contracts": 0,
+                "total_amount": 0,
+                "active_chains": [],
+                "top_wallets": [],
+                "top_contracts": [],
+                "recent_activity": [],
+                "growth_metrics": {},
+                "period": {
+                    "start_date": None,
+                    "end_date": None,
+                    "days": days
+                }
+            }
+
+    # Calculate date range
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+    
+    # Get all Web3 events for the period
+    web3_events = db.query(models.Web3Event).filter(
+        and_(
+            models.Web3Event.client_company_id.in_([uuid.UUID(cid) for cid in company_ids]),
+            models.Web3Event.timestamp >= start_date,
+            models.Web3Event.timestamp <= end_date
+        )
+    ).all()
+    
+    if not web3_events:
+        return {
+            "total_events": 0,
+            "total_wallets": 0,
+            "total_contracts": 0,
+            "total_amount": 0,
+            "active_chains": [],
+            "top_wallets": [],
+            "top_contracts": [],
+            "recent_activity": [],
+            "growth_metrics": {},
+            "period": {
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+                "days": days
+            }
+        }
+    
+    # Calculate comprehensive metrics
+    unique_wallets = set()
+    unique_contracts = set()
+    unique_chains = set()
+    total_amount = 0
+    wallet_activity = {}
+    contract_activity = {}
+    chain_activity = {}
+    recent_activity = []
+    
+    for event in web3_events:
+        # Track unique entities
+        if event.wallet_address:
+            unique_wallets.add(event.wallet_address)
+        if event.contract_address:
+            unique_contracts.add(event.contract_address)
+        if event.chain_id:
+            unique_chains.add(event.chain_id)
+        
+        # Track wallet activity
+        if event.wallet_address:
+            if event.wallet_address not in wallet_activity:
+                wallet_activity[event.wallet_address] = {
+                    "wallet_address": event.wallet_address,
+                    "interaction_count": 0,
+                    "total_amount": 0,
+                    "contracts_interacted": set(),
+                    "chains_used": set()
+                }
+            
+            wallet_activity[event.wallet_address]["interaction_count"] += 1
+            wallet_activity[event.wallet_address]["contracts_interacted"].add(event.contract_address)
+            wallet_activity[event.wallet_address]["chains_used"].add(event.chain_id)
+        
+        # Track contract activity
+        if event.contract_address:
+            if event.contract_address not in contract_activity:
+                contract_activity[event.contract_address] = {
+                    "contract_address": event.contract_address,
+                    "interaction_count": 0,
+                    "total_amount": 0,
+                    "unique_wallets": set(),
+                    "chains_used": set()
+                }
+            
+            contract_activity[event.contract_address]["interaction_count"] += 1
+            contract_activity[event.contract_address]["unique_wallets"].add(event.wallet_address)
+            contract_activity[event.contract_address]["chains_used"].add(event.chain_id)
+        
+        # Track chain activity
+        if event.chain_id:
+            if event.chain_id not in chain_activity:
+                chain_activity[event.chain_id] = {
+                    "chain_id": event.chain_id,
+                    "interaction_count": 0,
+                    "total_amount": 0,
+                    "unique_wallets": set(),
+                    "unique_contracts": set()
+                }
+            
+            chain_activity[event.chain_id]["interaction_count"] += 1
+            chain_activity[event.chain_id]["unique_wallets"].add(event.wallet_address)
+            if event.contract_address:
+                chain_activity[event.chain_id]["unique_contracts"].add(event.contract_address)
+        
+        # Extract amount
+        if event.properties:
+            amount_fields = ['amount', 'value', 'token_amount', 'eth_amount', 'usd_value']
+            for field in amount_fields:
+                if field in event.properties:
+                    try:
+                        amount = float(event.properties[field])
+                        total_amount += amount
+                        
+                        # Add to wallet/contract/chain amounts
+                        if event.wallet_address and event.wallet_address in wallet_activity:
+                            wallet_activity[event.wallet_address]["total_amount"] += amount
+                        if event.contract_address and event.contract_address in contract_activity:
+                            contract_activity[event.contract_address]["total_amount"] += amount
+                        if event.chain_id and event.chain_id in chain_activity:
+                            chain_activity[event.chain_id]["total_amount"] += amount
+                        break
+                    except (ValueError, TypeError):
+                        continue
+        
+        # Collect recent activity (last 20 events)
+        if len(recent_activity) < 20:
+            recent_activity.append({
+                "wallet_address": event.wallet_address,
+                "contract_address": event.contract_address,
+                "chain_id": event.chain_id,
+                "event_name": event.event_name,
+                "transaction_hash": event.transaction_hash,
+                "timestamp": event.timestamp.isoformat(),
+                "amount": amount if 'amount' in locals() else 0
+            })
+    
+    # Format top wallets
+    top_wallets = []
+    for wallet_addr, data in wallet_activity.items():
+        top_wallets.append({
+            "wallet_address": wallet_addr,
+            "interaction_count": data["interaction_count"],
+            "total_amount": data["total_amount"],
+            "contracts_interacted": len(data["contracts_interacted"]),
+            "chains_used": len(data["chains_used"])
+        })
+    top_wallets.sort(key=lambda x: x["interaction_count"], reverse=True)
+    
+    # Format top contracts
+    top_contracts = []
+    for contract_addr, data in contract_activity.items():
+        top_contracts.append({
+            "contract_address": contract_addr,
+            "interaction_count": data["interaction_count"],
+            "total_amount": data["total_amount"],
+            "unique_wallets": len(data["unique_wallets"]),
+            "chains_used": len(data["chains_used"])
+        })
+    top_contracts.sort(key=lambda x: x["interaction_count"], reverse=True)
+    
+    # Format active chains
+    active_chains = []
+    for chain_id, data in chain_activity.items():
+        active_chains.append({
+            "chain_id": chain_id,
+            "interaction_count": data["interaction_count"],
+            "total_amount": data["total_amount"],
+            "unique_wallets": len(data["unique_wallets"]),
+            "unique_contracts": len(data["unique_contracts"])
+        })
+    active_chains.sort(key=lambda x: x["interaction_count"], reverse=True)
+    
+    # Calculate growth metrics (compare with previous period)
+    previous_start = start_date - timedelta(days=days)
+    previous_events = db.query(models.Web3Event).filter(
+        and_(
+            models.Web3Event.client_company_id.in_([uuid.UUID(cid) for cid in company_ids]),
+            models.Web3Event.timestamp >= previous_start,
+            models.Web3Event.timestamp < start_date
+        )
+    ).count()
+    
+    current_events = len(web3_events)
+    growth_rate = ((current_events - previous_events) / previous_events * 100) if previous_events > 0 else 0
+    
+    return {
+        "total_events": current_events,
+        "total_wallets": len(unique_wallets),
+        "total_contracts": len(unique_contracts),
+        "total_amount": total_amount,
+        "active_chains": active_chains,
+        "top_wallets": top_wallets[:10],  # Top 10 wallets
+        "top_contracts": top_contracts[:10],  # Top 10 contracts
+        "recent_activity": recent_activity,
+        "growth_metrics": {
+            "events_growth_rate": round(growth_rate, 2),
+            "previous_period_events": previous_events,
+            "current_period_events": current_events
+        },
+        "period": {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "days": days
+        }
+    }
+
+
+@router.get("/analytics/web3/wallet/{wallet_address}")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@validate_query_parameters(max_days=365)
+@log_sensitive_operations("web3_wallet_analytics")
+async def web3_wallet_analytics(
+    wallet_address: str = Path(..., description="Wallet address to analyze"),
+    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Monitor a specific wallet address and track all its interactions."""
+    # Resolve company IDs owned by user
+    if company_id:
+        company = crud.get_client_company_by_id(db, company_id=company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized for this company")
+        company_ids = [str(company_id)]
+    else:
+        company_ids = [str(c.id) for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
+        if not company_ids:
+            raise HTTPException(status_code=404, detail="No companies found for user")
+
+    # Calculate date range
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+    
+    # Get all events for this wallet
+    wallet_events = db.query(models.Web3Event).filter(
+        and_(
+            models.Web3Event.client_company_id.in_([uuid.UUID(cid) for cid in company_ids]),
+            models.Web3Event.wallet_address == wallet_address.lower(),
+            models.Web3Event.timestamp >= start_date,
+            models.Web3Event.timestamp <= end_date
+        )
+    ).order_by(desc(models.Web3Event.timestamp)).all()
+    
+    if not wallet_events:
+        return {
+            "wallet_address": wallet_address,
+            "total_interactions": 0,
+            "total_amount": 0,
+            "unique_contracts": [],
+            "chains_used": [],
+            "interaction_history": [],
+            "summary": {
+                "first_interaction": None,
+                "last_interaction": None,
+                "most_active_contract": None,
+                "most_active_chain": None
+            }
+        }
+    
+    # Analyze wallet interactions
+    unique_contracts = set()
+    chains_used = set()
+    total_amount = 0
+    contract_interactions = {}
+    chain_interactions = {}
+    interaction_history = []
+    
+    for event in wallet_events:
+        # Track contracts
+        if event.contract_address:
+            unique_contracts.add(event.contract_address)
+            contract_interactions[event.contract_address] = contract_interactions.get(event.contract_address, 0) + 1
+        
+        # Track chains
+        chains_used.add(event.chain_id)
+        chain_interactions[event.chain_id] = chain_interactions.get(event.chain_id, 0) + 1
+        
+        # Extract amount from properties
+        event_amount = 0
+        if event.properties:
+            # Common amount field names in Web3 events
+            amount_fields = ['amount', 'value', 'token_amount', 'eth_amount', 'usd_value']
+            for field in amount_fields:
+                if field in event.properties:
+                    try:
+                        event_amount = float(event.properties[field])
+                        break
+                    except (ValueError, TypeError):
+                        continue
+        
+        total_amount += event_amount
+        
+        # Build interaction history
+        interaction_history.append({
+            "transaction_hash": event.transaction_hash,
+            "contract_address": event.contract_address,
+            "chain_id": event.chain_id,
+            "event_name": event.event_name,
+            "amount": event_amount,
+            "timestamp": event.timestamp.isoformat(),
+            "properties": event.properties or {}
+        })
+    
+    # Calculate summary metrics
+    most_active_contract = max(contract_interactions.items(), key=lambda x: x[1])[0] if contract_interactions else None
+    most_active_chain = max(chain_interactions.items(), key=lambda x: x[1])[0] if chain_interactions else None
+    
+    # Contract interaction details
+    contract_details = []
+    for contract_addr, count in contract_interactions.items():
+        contract_events = [e for e in wallet_events if e.contract_address == contract_addr]
+        contract_amount = sum(
+            float(e.properties.get('amount', e.properties.get('value', 0))) 
+            for e in contract_events 
+            if e.properties and (e.properties.get('amount') or e.properties.get('value'))
+        )
+        
+        contract_details.append({
+            "contract_address": contract_addr,
+            "interaction_count": count,
+            "total_amount": contract_amount,
+            "first_interaction": min(e.timestamp for e in contract_events).isoformat(),
+            "last_interaction": max(e.timestamp for e in contract_events).isoformat(),
+            "chains_used": list(set(e.chain_id for e in contract_events))
+        })
+    
+    # Sort by interaction count
+    contract_details.sort(key=lambda x: x["interaction_count"], reverse=True)
+    
+    return {
+        "wallet_address": wallet_address,
+        "total_interactions": len(wallet_events),
+        "total_amount": total_amount,
+        "unique_contracts": list(unique_contracts),
+        "chains_used": list(chains_used),
+        "interaction_history": interaction_history[:100],  # Limit to 100 most recent
+        "contract_details": contract_details,
+        "summary": {
+            "first_interaction": min(e.timestamp for e in wallet_events).isoformat(),
+            "last_interaction": max(e.timestamp for e in wallet_events).isoformat(),
+            "most_active_contract": most_active_contract,
+            "most_active_chain": most_active_chain,
+            "avg_amount_per_interaction": round(total_amount / len(wallet_events), 4) if wallet_events else 0
+        }
+    }
+
+
+@router.get("/analytics/web3/contract/{contract_address}")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@validate_query_parameters(max_days=365)
+@log_sensitive_operations("web3_contract_analytics")
+async def web3_contract_analytics(
+    contract_address: str = Path(..., description="Contract address to analyze"),
+    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Monitor a specific contract address and track all wallet interactions with it."""
+    # Resolve company IDs owned by user
+    if company_id:
+        company = crud.get_client_company_by_id(db, company_id=company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized for this company")
+        company_ids = [str(company_id)]
+    else:
+        company_ids = [str(c.id) for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
+        if not company_ids:
+            raise HTTPException(status_code=404, detail="No companies found for user")
+
+    # Calculate date range
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+    
+    # Get all events for this contract
+    contract_events = db.query(models.Web3Event).filter(
+        and_(
+            models.Web3Event.client_company_id.in_([uuid.UUID(cid) for cid in company_ids]),
+            models.Web3Event.contract_address == contract_address.lower(),
+            models.Web3Event.timestamp >= start_date,
+            models.Web3Event.timestamp <= end_date
+        )
+    ).order_by(desc(models.Web3Event.timestamp)).all()
+    
+    if not contract_events:
+        return {
+            "contract_address": contract_address,
+            "total_interactions": 0,
+            "unique_wallets": 0,
+            "total_amount": 0,
+            "chains_used": [],
+            "wallet_interactions": [],
+            "summary": {
+                "first_interaction": None,
+                "last_interaction": None,
+                "most_active_wallet": None,
+                "most_active_chain": None
+            }
+        }
+    
+    # Analyze contract interactions
+    unique_wallets = set()
+    chains_used = set()
+    total_amount = 0
+    wallet_interactions = {}
+    chain_interactions = {}
+    
+    for event in contract_events:
+        # Track wallets
+        unique_wallets.add(event.wallet_address)
+        wallet_interactions[event.wallet_address] = wallet_interactions.get(event.wallet_address, 0) + 1
+        
+        # Track chains
+        chains_used.add(event.chain_id)
+        chain_interactions[event.chain_id] = chain_interactions.get(event.chain_id, 0) + 1
+        
+        # Extract amount from properties
+        if event.properties:
+            amount_fields = ['amount', 'value', 'token_amount', 'eth_amount', 'usd_value']
+            for field in amount_fields:
+                if field in event.properties:
+                    try:
+                        total_amount += float(event.properties[field])
+                        break
+                    except (ValueError, TypeError):
+                        continue
+    
+    # Calculate wallet interaction details
+    wallet_details = []
+    for wallet_addr, count in wallet_interactions.items():
+        wallet_events = [e for e in contract_events if e.wallet_address == wallet_addr]
+        wallet_amount = sum(
+            float(e.properties.get('amount', e.properties.get('value', 0))) 
+            for e in wallet_events 
+            if e.properties and (e.properties.get('amount') or e.properties.get('value'))
+        )
+        
+        wallet_details.append({
+            "wallet_address": wallet_addr,
+            "interaction_count": count,
+            "total_amount": wallet_amount,
+            "first_interaction": min(e.timestamp for e in wallet_events).isoformat(),
+            "last_interaction": max(e.timestamp for e in wallet_events).isoformat(),
+            "chains_used": list(set(e.chain_id for e in wallet_events)),
+            "event_types": list(set(e.event_name for e in wallet_events))
+        })
+    
+    # Sort by interaction count
+    wallet_details.sort(key=lambda x: x["interaction_count"], reverse=True)
+    
+    # Calculate summary metrics
+    most_active_wallet = max(wallet_interactions.items(), key=lambda x: x[1])[0] if wallet_interactions else None
+    most_active_chain = max(chain_interactions.items(), key=lambda x: x[1])[0] if chain_interactions else None
+    
+    return {
+        "contract_address": contract_address,
+        "total_interactions": len(contract_events),
+        "unique_wallets": len(unique_wallets),
+        "total_amount": total_amount,
+        "chains_used": list(chains_used),
+        "wallet_interactions": wallet_details[:50],  # Top 50 most active wallets
+        "summary": {
+            "first_interaction": min(e.timestamp for e in contract_events).isoformat(),
+            "last_interaction": max(e.timestamp for e in contract_events).isoformat(),
+            "most_active_wallet": most_active_wallet,
+            "most_active_chain": most_active_chain,
+            "avg_amount_per_interaction": round(total_amount / len(contract_events), 4) if contract_events else 0,
+            "avg_interactions_per_wallet": round(len(contract_events) / len(unique_wallets), 2) if unique_wallets else 0
+        }
+    }

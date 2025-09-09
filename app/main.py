@@ -19,6 +19,7 @@ from .api import (
     twitter_router,
     aggregation_router
 )
+# Web3 analytics are now integrated into the main dashboard
 
 
 @asynccontextmanager
@@ -99,6 +100,7 @@ app.include_router(system_router)
 app.include_router(imports_router)
 app.include_router(twitter_router)
 app.include_router(aggregation_router)
+# Web3 analytics are now integrated into the main dashboard
 
 
 @app.get("/", tags=["Root"])
