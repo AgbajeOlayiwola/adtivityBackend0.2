@@ -1086,3 +1086,109 @@ class AggregationResponse(BaseModel):
     storage_saved_mb: float
     processing_time_seconds: float
     message: str
+
+
+# Web3 Analytics Schemas
+class Web3WalletActivity(BaseModel):
+    """Web3 wallet activity data."""
+    wallet_address: str
+    total_events: int
+    unique_chains: int
+    first_seen: str
+    last_seen: str
+
+
+class Web3ChainData(BaseModel):
+    """Web3 chain analytics data."""
+    chain_id: str
+    total_events: int
+    unique_wallets: int
+    unique_users: int
+    first_event: Optional[str] = None
+    last_event: Optional[str] = None
+    avg_events_per_wallet: float
+
+
+class Web3TransactionData(BaseModel):
+    """Web3 transaction analytics data."""
+    transaction_hash: Optional[str] = None
+    wallet_address: str
+    contract_address: Optional[str] = None
+    chain_id: str
+    event_name: str
+    timestamp: str
+
+
+class Web3UserJourney(BaseModel):
+    """Web3 user journey data."""
+    user_id: str
+    wallet_address: str
+    total_events: int
+    chains_used: List[str]
+    contracts_interacted: List[str]
+    first_activity: str
+    last_activity: str
+    activity_duration_days: int
+    events: List[Dict[str, Any]]
+
+
+class Web3AnalyticsSummary(BaseModel):
+    """Web3 analytics summary data."""
+    total_events: int
+    total_wallets: int
+    total_chains: int
+    total_contracts: int
+    active_users: int
+    growth_metrics: Dict[str, Any]
+    top_chains: List[Dict[str, Any]]
+    top_contracts: List[Dict[str, Any]]
+    period: Dict[str, Any]
+
+
+# Web3 Monitoring Schemas
+class Web3WalletMonitoring(BaseModel):
+    """Web3 wallet monitoring data."""
+    wallet_address: str
+    total_interactions: int
+    total_amount: float
+    unique_contracts: List[str]
+    chains_used: List[str]
+    interaction_history: List[Dict[str, Any]]
+    contract_details: List[Dict[str, Any]]
+    summary: Dict[str, Any]
+
+
+class Web3ContractMonitoring(BaseModel):
+    """Web3 contract monitoring data."""
+    contract_address: str
+    total_interactions: int
+    unique_wallets: int
+    total_amount: float
+    chains_used: List[str]
+    wallet_interactions: List[Dict[str, Any]]
+    summary: Dict[str, Any]
+
+
+class Web3InteractionDetail(BaseModel):
+    """Web3 interaction detail data."""
+    transaction_hash: Optional[str] = None
+    contract_address: Optional[str] = None
+    chain_id: str
+    event_name: str
+    amount: float
+    token_symbol: Optional[str] = None
+    timestamp: str
+    properties: Dict[str, Any]
+    user_id: str
+
+
+class Web3WalletActivity(BaseModel):
+    """Web3 wallet activity data."""
+    wallet_address: str
+    total_interactions: int
+    total_amount: float
+    chains_used: List[str]
+    event_types: List[str]
+    first_interaction: str
+    last_interaction: str
+    recent_interactions: List[Dict[str, Any]]
