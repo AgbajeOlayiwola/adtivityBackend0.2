@@ -16,7 +16,7 @@ router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 
 @router.post("/metrics/", response_model=schemas.PlatformMetrics, status_code=status.HTTP_201_CREATED)
-async def create_metrics(
+async def create_cmetrics(
     metrics: schemas.MetricsCreate,
     current_company: models.ClientCompany = Depends(get_current_client_company),
     db: Session = Depends(get_db)

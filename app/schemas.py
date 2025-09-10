@@ -213,7 +213,7 @@ class UserProfileResponse(BaseModel):
     has_twitter_integration: bool = False  # True if any company has Twitter added
     total_companies: int = 0
     companies_with_twitter: int = 0
-    twitter_profiles: List[CompanyTwitterResponse] = []  # List of Twitter profiles for user's companies
+    twitter_profile: Optional[CompanyTwitterResponse] = None  # Single Twitter profile for user's company
         
 class ClientCompany(ClientCompanyBase):
     """
@@ -696,11 +696,32 @@ class TwitterTweetResponse(TwitterTweetBase):
     """Twitter tweet response schema."""
     id: str  # UUID as string
     company_twitter_id: str  # UUID as string
-    hashtags: list = None
-    mentions: list = None
-    sentiment_score: float = None
-    sentiment_label: str = None
-    collected_at: datetime
+    hashtags: Optional[list] = None
+    mentions: Optional[list] = None
+    sentiment_score: Optional[float] = None
+    sentiment_label: Optional[str] = None
+    collected_at: Optional[datetime] = None
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """Convert ORM object to response schema with UUID to string conversion."""
+        data = {
+            'id': str(obj.id),
+            'tweet_id': obj.tweet_id,
+            'company_twitter_id': str(obj.company_twitter_id),
+            'text': obj.text,
+            'created_at': obj.created_at,
+            'retweet_count': obj.retweet_count,
+            'like_count': obj.like_count,
+            'reply_count': obj.reply_count,
+            'quote_count': obj.quote_count,
+            'hashtags': obj.hashtags or [],
+            'mentions': obj.mentions or [],
+            'sentiment_score': getattr(obj, 'sentiment_score', None),
+            'sentiment_label': getattr(obj, 'sentiment_label', None),
+            'collected_at': obj.collected_at
+        }
+        return cls(**data)
     
     class Config:
         from_attributes = True

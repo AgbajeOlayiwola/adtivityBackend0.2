@@ -176,8 +176,6 @@ class TwitterTweet(Base):
     quote_count = Column(Integer, default=0)
     hashtags = Column(JSON, nullable=True)  # Store hashtags as JSON array
     mentions = Column(JSON, nullable=True)  # Store mentions as JSON array
-    sentiment_score = Column(Float, nullable=True)
-    sentiment_label = Column(String, nullable=True)
     collected_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     
     # Relationships

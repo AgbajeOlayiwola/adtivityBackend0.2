@@ -107,13 +107,13 @@ def regenerate_client_company_api_key(
     return company, new_api_key
 
 
-def get_twitter_profiles_by_platform_user(
+def get_twitter_profile_by_platform_user(
     db: Session, platform_user_id: uuid.UUID
-) -> List[CompanyTwitter]:
-    """Get all Twitter profiles for companies owned by a platform user."""
+) -> Optional[CompanyTwitter]:
+    """Get the first Twitter profile for companies owned by a platform user."""
     return db.query(CompanyTwitter)\
         .join(ClientCompany, CompanyTwitter.company_id == ClientCompany.id)\
         .filter(
             ClientCompany.platform_user_id == platform_user_id,
             ClientCompany.is_active == True
-        ).all()
+        ).first()

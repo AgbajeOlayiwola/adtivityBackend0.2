@@ -9,6 +9,7 @@ from uuid import UUID
 from ..core.database import get_db
 from ..core.security import get_current_platform_user
 from ..core.twitter_service import twitter_service
+from ..core.background_tasks import background_task_service
 from ..crud.twitter import twitter_crud
 from .. import crud
 from ..schemas import (
@@ -569,3 +570,185 @@ async def quick_validate_handle(
             "error": f"Error validating handle: {str(e)}",
             "handle": handle
         }
+
+
+# Background Sync Management Endpoints
+@router.post("/sync/trigger")
+async def trigger_auto_sync(
+    company_id: str = Query(..., description="Company ID to sync"),
+    current_user: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Manually trigger sync for a specific company."""
+    try:
+        # Verify user owns this company
+        company = crud.get_client_company_by_id(db, company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        # Trigger on-demand sync
+        await background_task_service.sync_account_on_demand(company_id)
+        
+        return {
+            "success": True,
+            "message": f"Sync triggered for company {company_id}",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error triggering sync: {str(e)}"
+        )
+
+
+@router.get("/sync/status")
+async def get_sync_status(
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Get the status of automatic sync service."""
+    return {
+        "auto_sync_running": background_task_service.is_running,
+        "sync_interval_seconds": background_task_service.sync_interval,
+        "next_sync_in": f"{background_task_service.sync_interval} seconds" if background_task_service.is_running else "Not running",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@router.get("/rate-limit/status")
+async def get_rate_limit_status(
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Get current Twitter API rate limit status."""
+    import time
+    from ..core.twitter_service import twitter_service
+    
+    current_time = time.time()
+    rate_limit_info = {
+        "rate_limit_reset": twitter_service.rate_limit_reset,
+        "rate_limit_active": current_time < twitter_service.rate_limit_reset,
+        "seconds_until_reset": max(0, twitter_service.rate_limit_reset - current_time),
+        "daily_requests_used": twitter_service.request_count,
+        "daily_request_limit": twitter_service.daily_request_limit,
+        "daily_requests_remaining": max(0, twitter_service.daily_request_limit - twitter_service.request_count),
+        "cache_size": len(twitter_service.user_cache),
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    if rate_limit_info["rate_limit_active"]:
+        rate_limit_info["reset_time"] = datetime.fromtimestamp(twitter_service.rate_limit_reset).isoformat()
+    
+    return rate_limit_info
+
+
+@router.post("/sync/start")
+async def start_auto_sync(
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Start automatic sync service (admin only)."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    if background_task_service.is_running:
+        return {
+            "success": False,
+            "message": "Auto sync is already running",
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    
+    # Start auto sync in background
+    import asyncio
+    asyncio.create_task(background_task_service.start_auto_sync())
+    
+    return {
+        "success": True,
+        "message": "Auto sync started",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@router.post("/sync/stop")
+async def stop_auto_sync(
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Stop automatic sync service (admin only)."""
+    if not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    background_task_service.stop_auto_sync()
+    
+    return {
+        "success": True,
+        "message": "Auto sync stopped",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+@router.post("/sync/initial")
+async def initial_sync_all_tweets(
+    company_id: str = Query(..., description="Company ID to sync"),
+    max_tweets: int = Query(500, ge=1, le=1000, description="Maximum tweets to sync"),
+    current_user: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Perform initial sync of all available tweets for a company."""
+    try:
+        # Verify user owns this company
+        company = crud.get_client_company_by_id(db, company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Company not found")
+        
+        # Get Twitter account
+        twitter_account = twitter_crud.get_company_twitter_by_company(db, company_id)
+        if not twitter_account:
+            raise HTTPException(status_code=404, detail="No Twitter account found for this company")
+        
+        # Fetch all available tweets
+        profile_data = await twitter_service.get_user_by_username(twitter_account.twitter_handle)
+        if not profile_data:
+            raise HTTPException(status_code=404, detail="Twitter user not found")
+        
+        tweets = await twitter_service.get_user_tweets(profile_data.id, max_results=max_tweets)
+        
+        tweets_synced = 0
+        for tweet in tweets:
+            # Check if tweet already exists
+            existing_tweet = twitter_crud.get_tweet_by_id(db, tweet.tweet_id)
+            if not existing_tweet:
+                # Calculate sentiment
+                sentiment_score, sentiment_label = twitter_service.calculate_sentiment(tweet.text)
+                
+                tweet_data = {
+                    "tweet_id": tweet.tweet_id,
+                    "company_twitter_id": twitter_account.id,
+                    "text": tweet.text,
+                    "created_at": tweet.created_at,
+                    "retweet_count": tweet.retweet_count,
+                    "like_count": tweet.like_count,
+                    "reply_count": tweet.reply_count,
+                    "quote_count": tweet.quote_count,
+                    "hashtags": tweet.hashtags,
+                    "mentions": tweet.mentions,
+                    "sentiment_score": sentiment_score,
+                    "sentiment_label": sentiment_label
+                }
+                
+                twitter_crud.create_tweet(db, tweet_data)
+                tweets_synced += 1
+        
+        db.commit()
+        
+        return {
+            "success": True,
+            "message": f"Initial sync completed for @{twitter_account.twitter_handle}",
+            "tweets_synced": tweets_synced,
+            "total_tweets_fetched": len(tweets),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error in initial sync: {str(e)}"
+        )
