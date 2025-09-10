@@ -19,7 +19,8 @@ from .companies import (
     get_client_company_by_id,
     get_client_company_by_name,
     get_client_companies_by_platform_user,
-    regenerate_client_company_api_key
+    regenerate_client_company_api_key,
+    get_twitter_profiles_by_platform_user
 )
 from .events import (
     create_event,
@@ -65,6 +66,7 @@ __all__ = [
     "get_client_company_by_name",
     "get_client_companies_by_platform_user",
     "regenerate_client_company_api_key",
+    "get_twitter_profiles_by_platform_user",
     
     # Events
     "create_event",

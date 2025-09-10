@@ -2,10 +2,10 @@
 
 import secrets
 import uuid
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from sqlalchemy.orm import Session
 
-from ..models import ClientCompany
+from ..models import ClientCompany, CompanyTwitter
 from .auth import get_password_hash
 
 
@@ -104,4 +104,16 @@ def regenerate_client_company_api_key(
     db.commit()
     db.refresh(company)
     
-    return company, new_api_key 
+    return company, new_api_key
+
+
+def get_twitter_profiles_by_platform_user(
+    db: Session, platform_user_id: uuid.UUID
+) -> List[CompanyTwitter]:
+    """Get all Twitter profiles for companies owned by a platform user."""
+    return db.query(CompanyTwitter)\
+        .join(ClientCompany, CompanyTwitter.company_id == ClientCompany.id)\
+        .filter(
+            ClientCompany.platform_user_id == platform_user_id,
+            ClientCompany.is_active == True
+        ).all()

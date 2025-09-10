@@ -213,6 +213,7 @@ class UserProfileResponse(BaseModel):
     has_twitter_integration: bool = False  # True if any company has Twitter added
     total_companies: int = 0
     companies_with_twitter: int = 0
+    twitter_profiles: List[CompanyTwitterResponse] = []  # List of Twitter profiles for user's companies
         
 class ClientCompany(ClientCompanyBase):
     """
