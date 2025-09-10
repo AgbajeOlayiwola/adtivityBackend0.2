@@ -9,6 +9,7 @@ from .core.config import settings
 from .core.database import init_db, close_db
 from .core.security_middleware import security_middleware_handler
 from .core.cors_middleware import CustomCORSMiddleware
+from .core.startup_tasks import startup_tasks
 from .api import (
     auth_router,
     dashboard_router,
@@ -27,7 +28,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     init_db()
-    yield
+    
+    # Start background tasks
+    async with startup_tasks():
+        yield
+    
     # Shutdown
     close_db()
 

@@ -31,6 +31,9 @@ class TwitterService:
         self.user_cache = {}  # Simple in-memory cache
         self.rate_limit_reset = 0
         self.last_request_time = 0
+        self.request_count = 0
+        self.daily_request_limit = 300  # Conservative limit
+        self.daily_reset_time = 0
     
     def _get_oauth_session(self) -> OAuth1Session:
         """Create OAuth 1.0a session for user context authentication."""
@@ -40,6 +43,86 @@ class TwitterService:
             resource_owner_key=self.access_token,
             resource_owner_secret=self.access_token_secret
         )
+    
+    async def _check_rate_limits(self) -> bool:
+        """Check if we can make a request based on rate limits."""
+        current_time = time.time()
+        
+        # Check daily limit
+        if current_time > self.daily_reset_time:
+            self.request_count = 0
+            self.daily_reset_time = current_time + 86400  # 24 hours
+        
+        if self.request_count >= self.daily_request_limit:
+            print(f"⚠️ Daily request limit reached ({self.daily_request_limit}). Reset in {self.daily_reset_time - current_time:.0f} seconds.")
+            return False
+        
+        # Check per-request rate limit
+        if current_time < self.rate_limit_reset:
+            wait_time = self.rate_limit_reset - current_time
+            print(f"⏳ Rate limit active. Wait {wait_time:.0f} seconds before next request.")
+            return False
+        
+        # Rate limiting: wait at least 2 seconds between requests
+        if current_time - self.last_request_time < 2:
+            await asyncio.sleep(2 - (current_time - self.last_request_time))
+        
+        return True
+    
+    async def _handle_rate_limit_response(self, response: httpx.Response) -> None:
+        """Handle rate limit response and update internal state."""
+        if response.status_code == 429:
+            rate_limit_reset = response.headers.get('x-rate-limit-reset')
+            if rate_limit_reset:
+                self.rate_limit_reset = int(rate_limit_reset)
+                print(f"⚠️ Rate limit exceeded. Reset at: {datetime.fromtimestamp(self.rate_limit_reset)}")
+            else:
+                # Fallback: wait 15 minutes
+                self.rate_limit_reset = time.time() + 900
+                print("⚠️ Rate limit exceeded. Waiting 15 minutes.")
+            
+            # Also check for daily limits
+            remaining = response.headers.get('x-rate-limit-remaining')
+            if remaining and int(remaining) < 10:
+                print(f"⚠️ Low rate limit remaining: {remaining}")
+    
+    async def _make_request_with_retry(self, url: str, params: dict = None, max_retries: int = 3) -> Optional[httpx.Response]:
+        """Make HTTP request with retry logic and rate limiting."""
+        for attempt in range(max_retries):
+            if not await self._check_rate_limits():
+                return None
+            
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(url, headers=self.headers, params=params)
+                    self.last_request_time = time.time()
+                    self.request_count += 1
+                    
+                    if response.status_code == 200:
+                        return response
+                    elif response.status_code == 429:
+                        await self._handle_rate_limit_response(response)
+                        if attempt < max_retries - 1:
+                            wait_time = min(60 * (2 ** attempt), 300)  # Exponential backoff, max 5 minutes
+                            print(f"⏳ Retrying in {wait_time} seconds... (attempt {attempt + 1}/{max_retries})")
+                            await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        print(f"❌ Request failed with status {response.status_code}: {response.text}")
+                        return response
+                        
+            except httpx.TimeoutException:
+                print(f"⏰ Request timeout (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(5)
+                continue
+            except Exception as e:
+                print(f"❌ Request error: {str(e)} (attempt {attempt + 1}/{max_retries})")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(5)
+                continue
+        
+        return None
     
     async def get_user_by_username(self, username: str) -> Optional[TwitterProfileData]:
         """Get Twitter user profile by username with rate limiting and caching."""
@@ -54,75 +137,53 @@ class TwitterService:
                         print(f"📦 Using cached data for @{username}")
                     return cached_data
             
-            # Check rate limits
-            current_time = time.time()
-            if current_time < self.rate_limit_reset:
-                wait_time = self.rate_limit_reset - current_time
-                print(f"⏳ Rate limit active. Wait {wait_time:.0f} seconds before next request.")
+            # Make request with retry logic
+            response = await self._make_request_with_retry(
+                f"{self.base_url}/users/by/username/{username}",
+                params={
+                    "user.fields": "id,username,name,description,profile_image_url,verified,public_metrics,created_at"
+                }
+            )
+            
+            if not response:
+                print(f"⚠️ Could not fetch profile for @{username} (rate limited or failed)")
                 return None
             
-            # Rate limiting: wait at least 1 second between requests
-            if current_time - self.last_request_time < 1:
-                await asyncio.sleep(1)
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.base_url}/users/by/username/{username}",
-                    headers=self.headers,
-                    params={
-                        "user.fields": "id,username,name,description,profile_image_url,verified,public_metrics,created_at"
-                    }
+            if response.status_code == 200:
+                data = response.json()
+                user_data = data.get("data", {})
+                
+                # Extract metrics
+                metrics = user_data.get("public_metrics", {})
+                
+                # Handle cases where Twitter API returns incomplete data
+                profile_data = TwitterProfileData(
+                    id=user_data.get("id") or None,
+                    username=user_data.get("username") or None,
+                    name=user_data.get("name") or None,
+                    description=user_data.get("description") or None,
+                    profile_image_url=user_data.get("profile_image_url") or None,
+                    verified=user_data.get("verified", False),
+                    followers_count=metrics.get("followers_count", 0),
+                    following_count=metrics.get("following_count", 0),
+                    tweets_count=metrics.get("tweet_count", 0),
+                    created_at=datetime.fromisoformat(user_data.get("created_at").replace("Z", "+00:00")) if user_data.get("created_at") else None
                 )
+            
+                # Cache the result
+                self.user_cache[cache_key] = (profile_data, time.time())
+                print(f"✅ Fetched and cached @{username}")
                 
-                self.last_request_time = time.time()
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    user_data = data.get("data", {})
-                    
-                    # Extract metrics
-                    metrics = user_data.get("public_metrics", {})
-                    
-                    # Handle cases where Twitter API returns incomplete data
-                    profile_data = TwitterProfileData(
-                        id=user_data.get("id") or None,
-                        username=user_data.get("username") or None,
-                        name=user_data.get("name") or None,
-                        description=user_data.get("description") or None,
-                        profile_image_url=user_data.get("profile_image_url") or None,
-                        verified=user_data.get("verified", False),
-                        followers_count=metrics.get("followers_count", 0),
-                        following_count=metrics.get("following_count", 0),
-                        tweets_count=metrics.get("tweet_count", 0),
-                        created_at=datetime.fromisoformat(user_data.get("created_at").replace("Z", "+00:00")) if user_data.get("created_at") else None
-                    )
-                
-                    # Cache the result
-                    self.user_cache[cache_key] = (profile_data, time.time())
-                    print(f"✅ Fetched and cached @{username}")
-                    
-                    return profile_data
-                
-                elif response.status_code == 429:
-                    # Handle rate limiting
-                    rate_limit_reset = response.headers.get('x-rate-limit-reset')
-                    if rate_limit_reset:
-                        self.rate_limit_reset = int(rate_limit_reset)
-                        print(f"⚠️ Rate limit exceeded. Reset at: {datetime.fromtimestamp(self.rate_limit_reset)}")
-                    else:
-                        # Fallback: wait 15 minutes
-                        self.rate_limit_reset = current_time + 900
-                        print("⚠️ Rate limit exceeded. Waiting 15 minutes.")
-                    return None
-                
-                elif response.status_code == 404:
-                    print(f"❌ User @{username} not found")
-                    # Cache the "not found" result to avoid repeated API calls
-                    self.user_cache[cache_key] = (None, time.time())
-                    return None
-                
-                else:
-                    print(f"❌ Twitter API Error {response.status_code} for @{username}: {response.text[:100]}")
+                return profile_data
+            
+            elif response.status_code == 404:
+                print(f"❌ User @{username} not found")
+                # Cache the "not found" result to avoid repeated API calls
+                self.user_cache[cache_key] = (None, time.time())
+                return None
+            
+            else:
+                print(f"❌ Twitter API Error {response.status_code} for @{username}: {response.text[:100]}")
                 return None
                 
         except Exception as e:
@@ -273,54 +334,58 @@ class TwitterService:
     async def get_user_tweets(self, user_id: str, max_results: int = 100) -> List[TwitterTweetBase]:
         """Get recent tweets from a user."""
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.base_url}/users/{user_id}/tweets",
-                    headers=self.headers,
-                    params={
-                        "max_results": max_results,
-                        "tweet.fields": "id,text,created_at,public_metrics,entities"
-                    }
-                )
+            # Make request with retry logic
+            response = await self._make_request_with_retry(
+                f"{self.base_url}/users/{user_id}/tweets",
+                params={
+                    "max_results": max_results,
+                    "tweet.fields": "id,text,created_at,public_metrics,entities"
+                }
+            )
+            
+            if not response:
+                print(f"⚠️ Could not fetch tweets for user {user_id} (rate limited or failed)")
+                return []
+            
+            if response.status_code == 200:
+                data = response.json()
+                tweets = data.get("data", [])
                 
-                if response.status_code == 200:
-                    data = response.json()
-                    tweets = data.get("data", [])
+                tweet_list = []
+                for tweet in tweets:
+                    # Extract hashtags and mentions
+                    entities = tweet.get("entities", {})
+                    hashtags = []
+                    mentions = []
                     
-                    tweet_list = []
-                    for tweet in tweets:
-                        # Extract hashtags and mentions
-                        entities = tweet.get("entities", {})
-                        hashtags = []
-                        mentions = []
-                        
-                        if "hashtags" in entities:
-                            hashtags = [tag.get("tag") for tag in entities["hashtags"]]
-                        
-                        if "mentions" in entities:
-                            mentions = [mention.get("username") for mention in entities["mentions"]]
-                        
-                        # Extract metrics
-                        metrics = tweet.get("public_metrics", {})
-                        
-                        tweet_data = TwitterTweetBase(
-                            tweet_id=tweet.get("id"),
-                            text=tweet.get("text"),
-                            created_at=datetime.fromisoformat(tweet.get("created_at").replace("Z", "+00:00")),
-                            retweet_count=metrics.get("retweet_count", 0),
-                            like_count=metrics.get("like_count", 0),
-                            reply_count=metrics.get("reply_count", 0),
-                            quote_count=metrics.get("quote_count", 0)
-                        )
-                        
-                        # Add hashtags and mentions as attributes
-                        tweet_data.hashtags = hashtags
-                        tweet_data.mentions = mentions
-                        
-                        tweet_list.append(tweet_data)
+                    if "hashtags" in entities:
+                        hashtags = [tag.get("tag") for tag in entities["hashtags"]]
                     
-                    return tweet_list
+                    if "mentions" in entities:
+                        mentions = [mention.get("username") for mention in entities["mentions"]]
+                    
+                    # Extract metrics
+                    metrics = tweet.get("public_metrics", {})
+                    
+                    tweet_data = TwitterTweetBase(
+                        tweet_id=tweet.get("id"),
+                        text=tweet.get("text"),
+                        created_at=datetime.fromisoformat(tweet.get("created_at").replace("Z", "+00:00")),
+                        retweet_count=metrics.get("retweet_count", 0),
+                        like_count=metrics.get("like_count", 0),
+                        reply_count=metrics.get("reply_count", 0),
+                        quote_count=metrics.get("quote_count", 0)
+                    )
+                    
+                    # Add hashtags and mentions as attributes
+                    tweet_data.hashtags = hashtags
+                    tweet_data.mentions = mentions
+                    
+                    tweet_list.append(tweet_data)
                 
+                return tweet_list
+            else:
+                print(f"❌ Error fetching tweets: {response.status_code} - {response.text[:100]}")
                 return []
                 
         except Exception as e:
