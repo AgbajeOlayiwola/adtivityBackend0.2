@@ -29,10 +29,18 @@ async def get_current_user_profile(
     # Get all companies owned by this user
     companies = crud.get_client_companies_by_platform_user(db, current_user.id)
     
+    # Get all Twitter profiles for user's companies
+    twitter_profiles = crud.get_twitter_profiles_by_platform_user(db, current_user.id)
+    
     # Calculate Twitter integration statistics
     total_companies = len(companies)
     companies_with_twitter = sum(1 for company in companies if company.is_twitter_added)
     has_twitter_integration = companies_with_twitter > 0
+    
+    # Convert Twitter profiles to response schema
+    twitter_profiles_response = []
+    for profile in twitter_profiles:
+        twitter_profiles_response.append(schemas.CompanyTwitterResponse.from_orm(profile))
     
     return schemas.UserProfileResponse(
         id=current_user.id,
@@ -46,7 +54,8 @@ async def get_current_user_profile(
         companies=companies,
         has_twitter_integration=has_twitter_integration,
         total_companies=total_companies,
-        companies_with_twitter=companies_with_twitter
+        companies_with_twitter=companies_with_twitter,
+        twitter_profiles=twitter_profiles_response
     )
 
 
