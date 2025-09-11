@@ -70,6 +70,7 @@ class ClientCompany(Base):
     app_users = relationship("ClientAppUser", back_populates="company")
     twitter_accounts = relationship("CompanyTwitter", back_populates="company")
     mention_notifications = relationship("MentionNotification", back_populates="company")
+    wallet_connections = relationship("WalletConnection", back_populates="company")
 
 
 class ClientAppUser(Base):
@@ -519,4 +520,77 @@ class SubscriptionPlan(Base):
     # Composite unique constraint
     __table_args__ = (
         UniqueConstraint('company_id', 'plan_name', name='unique_company_plan'),
+    )
+
+
+class WalletConnection(Base):
+    """
+    Blueprint for the 'wallet_connections' table.
+    Stores wallet connections for Web3 analytics.
+    """
+    __tablename__ = "wallet_connections"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    wallet_address = Column(String, nullable=False, index=True)  # The actual wallet address
+    wallet_type = Column(String, nullable=False)  # 'metamask', 'solflare', 'phantom', etc.
+    network = Column(String, nullable=False)  # 'ethereum', 'solana', 'polygon', etc.
+    wallet_name = Column(String)  # User-friendly name for the wallet
+    is_active = Column(Boolean, default=True)
+    is_verified = Column(Boolean, default=False)  # Whether the wallet is verified
+    verification_method = Column(String)  # 'signature', 'transaction', etc.
+    verification_timestamp = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_activity = Column(DateTime(timezone=True))
+    
+    # Relationships
+    company = relationship("ClientCompany", back_populates="wallet_connections")
+    
+    # Ensure unique wallet address per company
+    __table_args__ = (
+        UniqueConstraint('company_id', 'wallet_address', name='unique_company_wallet'),
+        Index('idx_wallet_address', 'wallet_address'),
+        Index('idx_company_wallet', 'company_id', 'wallet_address'),
+    )
+
+
+class WalletActivity(Base):
+    """
+    Blueprint for the 'wallet_activities' table.
+    Stores wallet activity and transaction data for analytics.
+    """
+    __tablename__ = "wallet_activities"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    wallet_connection_id = Column(UUID(as_uuid=True), ForeignKey("wallet_connections.id"), nullable=False, index=True)
+    transaction_hash = Column(String, nullable=False, index=True)
+    block_number = Column(Integer)
+    transaction_type = Column(String, nullable=False)  # 'send', 'receive', 'swap', 'mint', etc.
+    from_address = Column(String, index=True)
+    to_address = Column(String, index=True)
+    token_address = Column(String, index=True)  # For token transactions
+    token_symbol = Column(String)
+    token_name = Column(String)
+    amount = Column(DECIMAL(36, 18))  # Large precision for crypto amounts
+    amount_usd = Column(DECIMAL(15, 2))  # USD value at time of transaction
+    gas_used = Column(Integer)
+    gas_price = Column(DECIMAL(36, 18))
+    gas_fee_usd = Column(DECIMAL(15, 2))
+    network = Column(String, nullable=False)
+    status = Column(String, default='confirmed')  # 'pending', 'confirmed', 'failed'
+    timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Additional metadata
+    transaction_metadata = Column(JSON)  # Store additional transaction data
+    
+    # Relationships
+    wallet_connection = relationship("WalletConnection")
+    
+    # Indexes for better query performance
+    __table_args__ = (
+        Index('idx_wallet_timestamp', 'wallet_connection_id', 'timestamp'),
+        Index('idx_transaction_hash', 'transaction_hash'),
+        Index('idx_token_address', 'token_address'),
+        Index('idx_network_timestamp', 'network', 'timestamp'),
     )

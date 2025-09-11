@@ -1214,3 +1214,153 @@ class Web3WalletActivity(BaseModel):
     first_interaction: str
     last_interaction: str
     recent_interactions: List[Dict[str, Any]]
+
+
+# ====================================================================================
+# --- Wallet Connection Schemas ---
+# ====================================================================================
+
+class WalletConnectionBase(BaseModel):
+    """Base wallet connection schema."""
+    wallet_address: str
+    wallet_type: str  # 'metamask', 'solflare', 'phantom', etc.
+    network: str  # 'ethereum', 'solana', 'polygon', etc.
+    wallet_name: Optional[str] = None
+
+
+class WalletConnectionCreate(WalletConnectionBase):
+    """Schema for creating a wallet connection."""
+    company_id: uuid.UUID
+    verification_signature: Optional[str] = None  # For wallet verification
+
+
+class WalletConnectionUpdate(BaseModel):
+    """Schema for updating a wallet connection."""
+    wallet_name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class WalletConnectionResponse(WalletConnectionBase):
+    """Schema for wallet connection response."""
+    id: str
+    company_id: str
+    is_active: bool
+    is_verified: bool
+    verification_method: Optional[str] = None
+    verification_timestamp: Optional[datetime] = None
+    created_at: datetime
+    last_activity: Optional[datetime] = None
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """Convert ORM object to response schema, handling UUID serialization."""
+        data = {
+            "id": str(obj.id),
+            "company_id": str(obj.company_id),
+            "wallet_address": obj.wallet_address,
+            "wallet_type": obj.wallet_type,
+            "network": obj.network,
+            "wallet_name": obj.wallet_name,
+            "is_active": obj.is_active,
+            "is_verified": obj.is_verified,
+            "verification_method": obj.verification_method,
+            "verification_timestamp": obj.verification_timestamp,
+            "created_at": obj.created_at,
+            "last_activity": obj.last_activity
+        }
+        return cls(**data)
+    
+    class Config:
+        from_attributes = True
+
+
+class WalletActivityBase(BaseModel):
+    """Base wallet activity schema."""
+    transaction_hash: str
+    block_number: Optional[int] = None
+    transaction_type: str
+    from_address: Optional[str] = None
+    to_address: Optional[str] = None
+    token_address: Optional[str] = None
+    token_symbol: Optional[str] = None
+    token_name: Optional[str] = None
+    amount: Optional[Decimal] = None
+    amount_usd: Optional[Decimal] = None
+    gas_used: Optional[int] = None
+    gas_price: Optional[Decimal] = None
+    gas_fee_usd: Optional[Decimal] = None
+    network: str
+    status: str = 'confirmed'
+    timestamp: datetime
+    transaction_metadata: Optional[Dict[str, Any]] = None
+
+
+class WalletActivityCreate(WalletActivityBase):
+    """Schema for creating wallet activity."""
+    wallet_connection_id: uuid.UUID
+
+
+class WalletActivityResponse(WalletActivityBase):
+    """Schema for wallet activity response."""
+    id: str
+    wallet_connection_id: str
+    created_at: datetime
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """Convert ORM object to response schema, handling UUID serialization."""
+        data = {
+            "id": str(obj.id),
+            "wallet_connection_id": str(obj.wallet_connection_id),
+            "transaction_hash": obj.transaction_hash,
+            "block_number": obj.block_number,
+            "transaction_type": obj.transaction_type,
+            "from_address": obj.from_address,
+            "to_address": obj.to_address,
+            "token_address": obj.token_address,
+            "token_symbol": obj.token_symbol,
+            "amount": float(obj.amount) if obj.amount else 0.0,
+            "amount_usd": float(obj.amount_usd) if obj.amount_usd else 0.0,
+            "gas_used": obj.gas_used,
+            "gas_price": float(obj.gas_price) if obj.gas_price else 0.0,
+            "gas_fee_usd": float(obj.gas_fee_usd) if obj.gas_fee_usd else 0.0,
+            "network": obj.network,
+            "status": obj.status,
+            "timestamp": obj.timestamp,
+            "transaction_metadata": obj.transaction_metadata,
+            "created_at": obj.created_at
+        }
+        return cls(**data)
+    
+    class Config:
+        from_attributes = True
+
+
+class WalletVerificationRequest(BaseModel):
+    """Schema for wallet verification request."""
+    wallet_address: str
+    signature: str
+    message: str
+    timestamp: int
+
+
+class WalletVerificationResponse(BaseModel):
+    """Schema for wallet verification response."""
+    verified: bool
+    message: str
+    wallet_connection_id: Optional[str] = None
+
+
+class WalletAnalyticsResponse(BaseModel):
+    """Schema for wallet analytics response."""
+    wallet_address: str
+    total_transactions: int
+    total_volume_usd: Decimal
+    unique_tokens: int
+    networks: List[str]
+    transaction_types: Dict[str, int]
+    daily_activity: List[Dict[str, Any]]
+    top_tokens: List[Dict[str, Any]]
+    gas_spent_usd: Decimal
+    first_transaction: Optional[datetime] = None
+    last_transaction: Optional[datetime] = None
