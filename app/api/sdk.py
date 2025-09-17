@@ -11,6 +11,7 @@ from ..core.database import get_db
 from ..core.security import get_current_client_company
 from ..core.geolocation import geolocation_service
 from ..core.unified_analytics_service import UnifiedAnalyticsService
+from ..core.user_engagement_service import UserEngagementService
 from .. import crud, schemas, models
 
 router = APIRouter(prefix="/sdk", tags=["SDK Events"])
@@ -123,6 +124,13 @@ async def receive_sdk_event(
             
             # Process through aggregation system
             await unified_service.process_sdk_event(str(company.id), event_data)
+            
+            # Process for user engagement tracking
+            engagement_service = UserEngagementService(db)
+            engagement_result = engagement_service.process_event_for_engagement(str(company.id), event_data)
+            
+            if engagement_result.get("status") == "error":
+                logger.warning(f"User engagement tracking failed: {engagement_result.get('error')}")
             
             processed_count += 1
 

@@ -9,6 +9,7 @@ from .imports import router as imports_router
 from .twitter import router as twitter_router
 from .aggregation import router as aggregation_router
 from .wallets import router as wallets_router
+from .user_engagement import router as user_engagement_router
 
 __all__ = [
     "auth_router",
@@ -19,5 +20,6 @@ __all__ = [
     "imports_router",
     "twitter_router",
     "aggregation_router",
-    "wallets_router"
+    "wallets_router",
+    "user_engagement_router"
 ] 
