@@ -1364,3 +1364,255 @@ class WalletAnalyticsResponse(BaseModel):
     gas_spent_usd: Decimal
     first_transaction: Optional[datetime] = None
     last_transaction: Optional[datetime] = None
+
+
+# ====================================================================================
+# --- User Engagement Tracking Schemas ---
+# ====================================================================================
+
+class UserSessionBase(BaseModel):
+    """Base user session schema."""
+    user_id: str = Field(..., description="User identifier (user_id or anonymous_id)")
+    session_id: str = Field(..., description="Session identifier")
+    session_start: datetime = Field(..., description="Session start time")
+    session_end: Optional[datetime] = Field(None, description="Session end time")
+    last_activity: datetime = Field(..., description="Last activity timestamp")
+    total_events: int = Field(0, ge=0, description="Total events in session")
+    active_time_seconds: int = Field(0, ge=0, description="Total active time in seconds")
+    page_views: int = Field(0, ge=0, description="Total page views")
+    unique_pages: int = Field(0, ge=0, description="Unique pages viewed")
+    country: Optional[str] = Field(None, max_length=2, description="Country code")
+    region: Optional[str] = Field(None, max_length=100, description="Region name")
+    city: Optional[str] = Field(None, max_length=100, description="City name")
+    ip_address: Optional[str] = Field(None, max_length=45, description="IP address")
+    user_agent: Optional[str] = Field(None, description="User agent string")
+    referrer: Optional[str] = Field(None, description="Referrer URL")
+    device_type: Optional[str] = Field(None, description="Device type")
+    browser: Optional[str] = Field(None, description="Browser name")
+    os: Optional[str] = Field(None, description="Operating system")
+
+
+class UserSessionCreate(UserSessionBase):
+    """Schema for creating a user session."""
+    company_id: uuid.UUID = Field(..., description="Company ID")
+
+
+class UserSessionUpdate(BaseModel):
+    """Schema for updating a user session."""
+    session_end: Optional[datetime] = None
+    last_activity: Optional[datetime] = None
+    total_events: Optional[int] = Field(None, ge=0)
+    active_time_seconds: Optional[int] = Field(None, ge=0)
+    page_views: Optional[int] = Field(None, ge=0)
+    unique_pages: Optional[int] = Field(None, ge=0)
+
+
+class UserSessionResponse(UserSessionBase):
+    """Schema for user session response."""
+    id: str
+    company_id: str
+    created_at: datetime
+    updated_at: datetime
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """Convert ORM object to response schema."""
+        data = {
+            "id": str(obj.id),
+            "company_id": str(obj.company_id),
+            "user_id": obj.user_id,
+            "session_id": obj.session_id,
+            "session_start": obj.session_start,
+            "session_end": obj.session_end,
+            "last_activity": obj.last_activity,
+            "total_events": obj.total_events,
+            "active_time_seconds": obj.active_time_seconds,
+            "page_views": obj.page_views,
+            "unique_pages": obj.unique_pages,
+            "country": obj.country,
+            "region": obj.region,
+            "city": obj.city,
+            "ip_address": obj.ip_address,
+            "user_agent": obj.user_agent,
+            "referrer": obj.referrer,
+            "device_type": obj.device_type,
+            "browser": obj.browser,
+            "os": obj.os,
+            "created_at": obj.created_at,
+            "updated_at": obj.updated_at
+        }
+        return cls(**data)
+    
+    class Config:
+        from_attributes = True
+
+
+class UserEngagementBase(BaseModel):
+    """Base user engagement schema."""
+    user_id: str = Field(..., description="User identifier")
+    session_id: str = Field(..., description="Session identifier")
+    event_name: str = Field(..., description="Event name")
+    event_timestamp: datetime = Field(..., description="Event timestamp")
+    engagement_duration_seconds: int = Field(0, ge=0, description="Engagement duration in seconds")
+    page_url: Optional[str] = Field(None, description="Page URL")
+    page_title: Optional[str] = Field(None, description="Page title")
+    event_properties: Dict[str, Any] = Field(default_factory=dict, description="Event properties")
+    country: Optional[str] = Field(None, max_length=2, description="Country code")
+    region: Optional[str] = Field(None, max_length=100, description="Region name")
+    city: Optional[str] = Field(None, max_length=100, description="City name")
+    ip_address: Optional[str] = Field(None, max_length=45, description="IP address")
+
+
+class UserEngagementCreate(UserEngagementBase):
+    """Schema for creating user engagement."""
+    company_id: uuid.UUID = Field(..., description="Company ID")
+
+
+class UserEngagementResponse(UserEngagementBase):
+    """Schema for user engagement response."""
+    id: str
+    company_id: str
+    created_at: datetime
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """Convert ORM object to response schema."""
+        data = {
+            "id": str(obj.id),
+            "company_id": str(obj.company_id),
+            "user_id": obj.user_id,
+            "session_id": obj.session_id,
+            "event_name": obj.event_name,
+            "event_timestamp": obj.event_timestamp,
+            "engagement_duration_seconds": obj.engagement_duration_seconds,
+            "page_url": obj.page_url,
+            "page_title": obj.page_title,
+            "event_properties": obj.event_properties or {},
+            "country": obj.country,
+            "region": obj.region,
+            "city": obj.city,
+            "ip_address": obj.ip_address,
+            "created_at": obj.created_at
+        }
+        return cls(**data)
+    
+    class Config:
+        from_attributes = True
+
+
+class UserActivitySummaryBase(BaseModel):
+    """Base user activity summary schema."""
+    summary_date: date = Field(..., description="Summary date")
+    hour: Optional[int] = Field(None, ge=0, le=23, description="Hour (0-23), null for daily summaries")
+    total_active_users: int = Field(0, ge=0, description="Total active users")
+    total_new_users: int = Field(0, ge=0, description="Total new users")
+    total_returning_users: int = Field(0, ge=0, description="Total returning users")
+    total_sessions: int = Field(0, ge=0, description="Total sessions")
+    total_engagement_time_seconds: int = Field(0, ge=0, description="Total engagement time in seconds")
+    avg_engagement_time_per_user: float = Field(0.0, ge=0.0, description="Average engagement time per user")
+    avg_engagement_time_per_session: float = Field(0.0, ge=0.0, description="Average engagement time per session")
+    total_events: int = Field(0, ge=0, description="Total events")
+    total_page_views: int = Field(0, ge=0, description="Total page views")
+    unique_pages_viewed: int = Field(0, ge=0, description="Unique pages viewed")
+    country_breakdown: Dict[str, int] = Field(default_factory=dict, description="Country breakdown")
+    region_breakdown: Dict[str, int] = Field(default_factory=dict, description="Region breakdown")
+    city_breakdown: Dict[str, int] = Field(default_factory=dict, description="City breakdown")
+    device_breakdown: Dict[str, int] = Field(default_factory=dict, description="Device breakdown")
+    browser_breakdown: Dict[str, int] = Field(default_factory=dict, description="Browser breakdown")
+    operating_system_breakdown: Dict[str, int] = Field(default_factory=dict, description="Operating system breakdown")
+
+
+class UserActivitySummaryCreate(UserActivitySummaryBase):
+    """Schema for creating user activity summary."""
+    company_id: uuid.UUID = Field(..., description="Company ID")
+
+
+class UserActivitySummaryResponse(UserActivitySummaryBase):
+    """Schema for user activity summary response."""
+    id: str
+    company_id: str
+    created_at: datetime
+    updated_at: datetime
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """Convert ORM object to response schema."""
+        data = {
+            "id": str(obj.id),
+            "company_id": str(obj.company_id),
+            "summary_date": obj.date,
+            "hour": obj.hour,
+            "total_active_users": obj.total_active_users,
+            "total_new_users": obj.total_new_users,
+            "total_returning_users": obj.total_returning_users,
+            "total_sessions": obj.total_sessions,
+            "total_engagement_time_seconds": obj.total_engagement_time_seconds,
+            "avg_engagement_time_per_user": obj.avg_engagement_time_per_user,
+            "avg_engagement_time_per_session": obj.avg_engagement_time_per_session,
+            "total_events": obj.total_events,
+            "total_page_views": obj.total_page_views,
+            "unique_pages_viewed": obj.unique_pages_viewed,
+            "country_breakdown": obj.country_breakdown or {},
+            "region_breakdown": obj.region_breakdown or {},
+            "city_breakdown": obj.city_breakdown or {},
+            "device_breakdown": obj.device_breakdown or {},
+            "browser_breakdown": obj.browser_breakdown or {},
+            "operating_system_breakdown": obj.operating_system_breakdown or {},
+            "created_at": obj.created_at,
+            "updated_at": obj.updated_at
+        }
+        return cls(**data)
+    
+    class Config:
+        from_attributes = True
+
+
+# User Analytics Response Schemas
+class UserAnalyticsResponse(BaseModel):
+    """Schema for user analytics response."""
+    total_active_users: int = Field(..., description="Total active users in period")
+    total_new_users: int = Field(..., description="Total new users in period")
+    total_returning_users: int = Field(..., description="Total returning users in period")
+    avg_engagement_time_per_user: float = Field(..., description="Average engagement time per user in seconds")
+    avg_engagement_time_per_session: float = Field(..., description="Average engagement time per session in seconds")
+    total_sessions: int = Field(..., description="Total sessions in period")
+    total_events: int = Field(..., description="Total events in period")
+    total_page_views: int = Field(..., description="Total page views in period")
+    period_start: datetime = Field(..., description="Period start time")
+    period_end: datetime = Field(..., description="Period end time")
+    data_source: str = Field(..., description="Data source used for analytics")
+
+
+class UserEngagementMetrics(BaseModel):
+    """Schema for detailed user engagement metrics."""
+    user_id: str = Field(..., description="User identifier")
+    total_sessions: int = Field(..., description="Total sessions for user")
+    total_engagement_time_seconds: int = Field(..., description="Total engagement time in seconds")
+    avg_session_duration_seconds: float = Field(..., description="Average session duration in seconds")
+    total_events: int = Field(..., description="Total events for user")
+    total_page_views: int = Field(..., description="Total page views for user")
+    unique_pages_viewed: int = Field(..., description="Unique pages viewed by user")
+    first_seen: datetime = Field(..., description="First time user was seen")
+    last_seen: datetime = Field(..., description="Last time user was seen")
+    is_new_user: bool = Field(..., description="Whether this is a new user in the period")
+    country: Optional[str] = Field(None, description="User's country")
+    device_type: Optional[str] = Field(None, description="User's primary device type")
+
+
+class UserEngagementTimeSeries(BaseModel):
+    """Schema for user engagement time series data."""
+    timestamp: datetime = Field(..., description="Timestamp")
+    active_users: int = Field(..., description="Active users at this time")
+    new_users: int = Field(..., description="New users at this time")
+    avg_engagement_time: float = Field(..., description="Average engagement time at this time")
+    total_sessions: int = Field(..., description="Total sessions at this time")
+
+
+class UserEngagementDashboardResponse(BaseModel):
+    """Schema for user engagement dashboard response."""
+    summary: UserAnalyticsResponse = Field(..., description="Overall summary metrics")
+    time_series: List[UserEngagementTimeSeries] = Field(..., description="Time series data")
+    top_users: List[UserEngagementMetrics] = Field(..., description="Top users by engagement")
+    device_breakdown: Dict[str, int] = Field(..., description="Device type breakdown")
+    country_breakdown: Dict[str, int] = Field(..., description="Country breakdown")
+    hourly_breakdown: Dict[str, int] = Field(..., description="Hourly activity breakdown")

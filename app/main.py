@@ -19,7 +19,8 @@ from .api import (
     imports_router,
     twitter_router,
     aggregation_router,
-    wallets_router
+    wallets_router,
+    user_engagement_router
 )
 # Web3 analytics are now integrated into the main dashboard
 
@@ -107,6 +108,7 @@ app.include_router(imports_router)
 app.include_router(twitter_router)
 app.include_router(aggregation_router)
 app.include_router(wallets_router, prefix="/wallets", tags=["wallets"])
+app.include_router(user_engagement_router)
 # Web3 analytics are now integrated into the main dashboard
 
 

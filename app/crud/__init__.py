@@ -40,6 +40,7 @@ from .regions import (
     get_region_analytics,
     get_user_locations
 )
+from .user_engagement import user_engagement_crud
 
 
 __all__ = [
@@ -85,4 +86,7 @@ __all__ = [
     # Region Analytics
     "get_region_analytics",
     "get_user_locations",
+    
+    # User Engagement
+    "user_engagement_crud",
 ] 

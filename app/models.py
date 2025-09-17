@@ -594,3 +594,157 @@ class WalletActivity(Base):
         Index('idx_token_address', 'token_address'),
         Index('idx_network_timestamp', 'network', 'timestamp'),
     )
+
+
+# ====================================================================================
+# --- User Engagement Tracking Models ---
+# ====================================================================================
+
+class UserSession(Base):
+    """
+    Blueprint for the 'user_sessions' table.
+    Tracks user sessions for engagement analytics.
+    """
+    __tablename__ = "user_sessions"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    user_id = Column(String, nullable=False, index=True)  # Can be user_id or anonymous_id
+    session_id = Column(String, nullable=False, index=True)
+    
+    # Session timing
+    session_start = Column(DateTime(timezone=True), nullable=False, index=True)
+    session_end = Column(DateTime(timezone=True), nullable=True, index=True)
+    last_activity = Column(DateTime(timezone=True), nullable=False, index=True)
+    
+    # Engagement metrics
+    total_events = Column(Integer, default=0)
+    active_time_seconds = Column(Integer, default=0)  # Total time user was actively engaged
+    page_views = Column(Integer, default=0)
+    unique_pages = Column(Integer, default=0)
+    
+    # Geographic data
+    country = Column(String(2), index=True)
+    region = Column(String(100), index=True)
+    city = Column(String(100), index=True)
+    ip_address = Column(String(45), index=True)
+    
+    # Session metadata
+    user_agent = Column(String)
+    referrer = Column(String)
+    device_type = Column(String)  # 'mobile', 'desktop', 'tablet'
+    browser = Column(String)
+    os = Column(String)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    company = relationship("ClientCompany")
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_user_session_company', 'company_id', 'user_id'),
+        Index('idx_session_timing', 'session_start', 'session_end'),
+        Index('idx_user_activity', 'user_id', 'last_activity'),
+        Index('idx_company_session', 'company_id', 'session_id'),
+    )
+
+
+class UserEngagement(Base):
+    """
+    Blueprint for the 'user_engagement' table.
+    Tracks detailed user engagement metrics.
+    """
+    __tablename__ = "user_engagement"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    user_id = Column(String, nullable=False, index=True)
+    session_id = Column(String, nullable=False, index=True)
+    
+    # Engagement tracking
+    event_name = Column(String, nullable=False, index=True)
+    event_timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    engagement_duration_seconds = Column(Integer, default=0)  # Time spent on this specific event/page
+    
+    # Event context
+    page_url = Column(String)
+    page_title = Column(String)
+    event_properties = Column(JSON, default={})
+    
+    # Geographic data
+    country = Column(String(2), index=True)
+    region = Column(String(100), index=True)
+    city = Column(String(100), index=True)
+    ip_address = Column(String(45), index=True)
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Relationships
+    company = relationship("ClientCompany")
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_user_engagement_company', 'company_id', 'user_id'),
+        Index('idx_engagement_timing', 'event_timestamp'),
+        Index('idx_session_engagement', 'session_id', 'event_timestamp'),
+        Index('idx_user_events', 'user_id', 'event_timestamp'),
+    )
+
+
+class UserActivitySummary(Base):
+    """
+    Blueprint for the 'user_activity_summary' table.
+    Daily/hourly aggregated user activity metrics.
+    """
+    __tablename__ = "user_activity_summary"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    
+    # Time period
+    summary_date = Column(Date, nullable=False, index=True)
+    hour = Column(Integer, nullable=True, index=True)  # 0-23, null for daily summaries
+    
+    # User metrics
+    total_active_users = Column(Integer, default=0)  # Users who had at least one event
+    total_new_users = Column(Integer, default=0)  # Users seen for the first time
+    total_returning_users = Column(Integer, default=0)  # Users who were active before
+    
+    # Engagement metrics
+    total_sessions = Column(Integer, default=0)
+    total_engagement_time_seconds = Column(Integer, default=0)
+    avg_engagement_time_per_user = Column(Float, default=0.0)
+    avg_engagement_time_per_session = Column(Float, default=0.0)
+    
+    # Event metrics
+    total_events = Column(Integer, default=0)
+    total_page_views = Column(Integer, default=0)
+    unique_pages_viewed = Column(Integer, default=0)
+    
+    # Geographic breakdown
+    country_breakdown = Column(JSON, default={})  # {"US": 150, "UK": 75}
+    region_breakdown = Column(JSON, default={})
+    city_breakdown = Column(JSON, default={})
+    
+    # Device breakdown
+    device_breakdown = Column(JSON, default={})  # {"mobile": 200, "desktop": 150}
+    browser_breakdown = Column(JSON, default={})
+    operating_system_breakdown = Column(JSON, default={})
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    company = relationship("ClientCompany")
+    
+    # Composite unique constraint
+    __table_args__ = (
+        UniqueConstraint('company_id', 'summary_date', 'hour', name='unique_company_date_hour'),
+        Index('idx_activity_date', 'summary_date'),
+        Index('idx_activity_company_date', 'company_id', 'summary_date'),
+    )
