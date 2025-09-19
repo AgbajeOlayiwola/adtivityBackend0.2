@@ -190,8 +190,9 @@ async def verify_wallet_connection(
     try:
         # Find wallet connection by address
         # Note: This is a simplified verification - in production, you'd verify the signature
-        wallet = db.query(wallet_crud.WalletConnection).filter(
-            wallet_crud.WalletConnection.wallet_address == verification_data.wallet_address.lower()
+        from ..models import WalletConnection
+        wallet = db.query(WalletConnection).filter(
+            WalletConnection.wallet_address == verification_data.wallet_address.lower()
         ).first()
         
         if not wallet:
@@ -216,11 +217,17 @@ async def verify_wallet_connection(
         # For now, we'll mark it as verified if the signature is provided
         if verification_data.signature:
             verified_wallet = wallet_crud.verify_wallet_connection(db, wallet.id)
-            return WalletVerificationResponse(
-                verified=True,
-                message="Wallet verified successfully",
-                wallet_connection_id=str(verified_wallet.id)
-            )
+            if verified_wallet:
+                return WalletVerificationResponse(
+                    verified=True,
+                    message="Wallet verified successfully",
+                    wallet_connection_id=str(verified_wallet.id)
+                )
+            else:
+                return WalletVerificationResponse(
+                    verified=False,
+                    message="Failed to verify wallet connection"
+                )
         else:
             return WalletVerificationResponse(
                 verified=False,
