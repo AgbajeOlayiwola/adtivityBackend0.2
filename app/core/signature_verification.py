@@ -172,3 +172,4 @@ def verify_wallet_ownership(
         return False, "Invalid signature"
     
     return True, "Wallet ownership verified"
+
