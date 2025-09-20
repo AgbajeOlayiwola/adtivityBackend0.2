@@ -188,34 +188,35 @@ async def verify_wallet_connection(
 ):
     """Verify wallet ownership through signature."""
     try:
-        # Find wallet connection by address
+        # Find wallet connection by address AND company owned by current user
         # Note: This is a simplified verification - in production, you'd verify the signature
-        from ..models import WalletConnection
-        wallet = db.query(WalletConnection).filter(
-            WalletConnection.wallet_address == verification_data.wallet_address.lower()
+        from ..models import WalletConnection, ClientCompany
+        wallet = db.query(WalletConnection).join(
+            ClientCompany
+        ).filter(
+            WalletConnection.wallet_address == verification_data.wallet_address.lower(),
+            ClientCompany.platform_user_id == current_user.id
         ).first()
         
         if not wallet:
             return WalletVerificationResponse(
                 verified=False,
-                message="Wallet connection not found"
+                message="Wallet connection not found for your company"
             )
         
-        # Verify user owns the company
-        company = get_client_company_by_id(db, str(wallet.company_id))
-        if not company or company.platform_user_id != current_user.id:
-            return WalletVerificationResponse(
-                verified=False,
-                message="Access denied"
-            )
+        # Multi-chain signature verification implementation
+        from ..core.multi_chain_signature_verification import verify_wallet_ownership_multi_chain
         
-        # In a real implementation, you would:
-        # 1. Verify the signature against the wallet address
-        # 2. Check the message format and timestamp
-        # 3. Ensure the signature is recent
+        # Verify wallet ownership with cryptographic signature verification (supports multiple chains)
+        is_valid, error_message = verify_wallet_ownership_multi_chain(
+            wallet_address=verification_data.wallet_address,
+            message=verification_data.message,
+            signature=verification_data.signature,
+            expected_company=str(wallet.company_id)
+        )
         
-        # For now, we'll mark it as verified if the signature is provided
-        if verification_data.signature:
+        if is_valid:
+            # Mark wallet as verified in database
             verified_wallet = wallet_crud.verify_wallet_connection(db, wallet.id)
             if verified_wallet:
                 return WalletVerificationResponse(
@@ -231,7 +232,7 @@ async def verify_wallet_connection(
         else:
             return WalletVerificationResponse(
                 verified=False,
-                message="Invalid signature"
+                message=f"Verification failed: {error_message}"
             )
         
     except Exception as e:
