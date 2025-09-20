@@ -49,3 +49,8 @@ vaderSentiment==3.3.2
 
 #OAuth - Use compatible version for python-twitter-v2
 authlib>=0.15.4,<0.16.0
+
+#Web3 and Cryptography
+eth-account==0.10.0
+cryptography==42.0.5
+base58==2.1.1
