@@ -201,7 +201,8 @@ async def verify_wallet_connection(
         if not wallet:
             return WalletVerificationResponse(
                 verified=False,
-                message="Wallet connection not found for your company"
+                message="Wallet connection not found for your company",
+                wallet_connection_id=None
             )
         
         # Multi-chain signature verification implementation
@@ -227,18 +228,21 @@ async def verify_wallet_connection(
             else:
                 return WalletVerificationResponse(
                     verified=False,
-                    message="Failed to verify wallet connection"
+                    message="Failed to verify wallet connection",
+                    wallet_connection_id=str(wallet.id)
                 )
         else:
             return WalletVerificationResponse(
                 verified=False,
-                message=f"Verification failed: {error_message}"
+                message=f"Verification failed: {error_message}",
+                wallet_connection_id=str(wallet.id)
             )
         
     except Exception as e:
         return WalletVerificationResponse(
             verified=False,
-            message=f"Verification error: {str(e)}"
+            message=f"Verification error: {str(e)}",
+            wallet_connection_id=None
         )
 
 
