@@ -188,24 +188,20 @@ async def verify_wallet_connection(
 ):
     """Verify wallet ownership through signature."""
     try:
-        # Find wallet connection by address
+        # Find wallet connection by address AND company owned by current user
         # Note: This is a simplified verification - in production, you'd verify the signature
-        wallet = db.query(wallet_crud.WalletConnection).filter(
-            wallet_crud.WalletConnection.wallet_address == verification_data.wallet_address.lower()
+        from ..models import WalletConnection, ClientCompany
+        wallet = db.query(WalletConnection).join(
+            ClientCompany
+        ).filter(
+            WalletConnection.wallet_address == verification_data.wallet_address.lower(),
+            ClientCompany.platform_user_id == current_user.id
         ).first()
         
         if not wallet:
             return WalletVerificationResponse(
                 verified=False,
-                message="Wallet connection not found"
-            )
-        
-        # Verify user owns the company
-        company = get_client_company_by_id(db, str(wallet.company_id))
-        if not company or company.platform_user_id != current_user.id:
-            return WalletVerificationResponse(
-                verified=False,
-                message="Access denied"
+                message="Wallet connection not found for your company"
             )
         
         # In a real implementation, you would:
