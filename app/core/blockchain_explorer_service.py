@@ -139,7 +139,7 @@ class BlockchainExplorerService:
                         'value': 0,
                         'gas_used': 0,
                         'gas_price': 0,
-                        'timestamp': datetime.now(timezone.utc),
+                        'timestamp': datetime.now(timezone.utc) - timedelta(days=1),  # Use yesterday's timestamp for portfolio data
                         'status': 'confirmed',
                         'transaction_type': 'nft_hold',
                         'network': 'solana',
@@ -168,7 +168,7 @@ class BlockchainExplorerService:
                         'value': float(token.get('amount', 0)),
                         'gas_used': 0,
                         'gas_price': 0,
-                        'timestamp': datetime.now(timezone.utc),
+                        'timestamp': datetime.now(timezone.utc) - timedelta(days=1),  # Use yesterday's timestamp for portfolio data
                         'status': 'confirmed',
                         'transaction_type': 'token_balance',
                         'network': 'solana',
