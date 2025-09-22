@@ -3,6 +3,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from uuid import UUID
 from datetime import datetime, timedelta
 
@@ -191,10 +192,12 @@ async def verify_wallet_connection(
         # Find wallet connection by address AND company owned by current user
         # Note: This is a simplified verification - in production, you'd verify the signature
         from ..models import WalletConnection, ClientCompany
+        # For database lookup, we need to be case-insensitive since addresses might be stored in different cases
+        # But for signature verification, we need to preserve the original case
         wallet = db.query(WalletConnection).join(
             ClientCompany
         ).filter(
-            WalletConnection.wallet_address == verification_data.wallet_address.lower(),
+            func.lower(WalletConnection.wallet_address) == func.lower(verification_data.wallet_address),
             ClientCompany.platform_user_id == current_user.id
         ).first()
         

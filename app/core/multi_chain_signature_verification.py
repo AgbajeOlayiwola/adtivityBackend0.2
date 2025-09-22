@@ -33,7 +33,8 @@ def verify_ethereum_signature(wallet_address: str, message: str, signature: str)
         # Recover the address from the signature
         recovered_address = Account.recover_message(message_hash, signature=signature)
         
-        # Compare addresses (case-insensitive)
+        # Compare addresses - normalize to lowercase for comparison
+        # Ethereum addresses can have different case but represent the same address
         return recovered_address.lower() == wallet_address.lower()
     
     except Exception as e:
