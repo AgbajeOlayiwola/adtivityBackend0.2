@@ -161,6 +161,7 @@ class WalletActivityCRUD:
         """Create a new wallet activity record."""
         db_activity = WalletActivity(
             wallet_connection_id=activity_data.wallet_connection_id,
+            activity_type=activity_data.activity_type,
             transaction_hash=activity_data.transaction_hash,
             block_number=activity_data.block_number,
             transaction_type=activity_data.transaction_type,

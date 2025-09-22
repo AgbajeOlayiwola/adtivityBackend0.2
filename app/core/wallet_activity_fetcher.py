@@ -150,6 +150,7 @@ class WalletActivityFetcher:
                 # Create wallet activity record
                 activity_data = WalletActivityCreate(
                     wallet_connection_id=wallet_connection_id,
+                    activity_type=tx.get('transaction_type', 'transfer'),  # Use transaction_type as activity_type
                     transaction_hash=tx.get('transaction_hash', ''),
                     block_number=tx.get('block_number'),
                     transaction_type=tx.get('transaction_type', 'transfer'),
