@@ -272,8 +272,9 @@ def extract_timestamp_from_message(message: str) -> Optional[int]:
     """
     try:
         lines = message.strip().split('\n')
-        if len(lines) >= 4:
-            timestamp_match = re.match(r'^Timestamp\(ms\): (\d+)$', lines[3].strip())
+        # In the new 7-line format, timestamp is at line index 5 (6th line)
+        if len(lines) >= 6:
+            timestamp_match = re.match(r'^Timestamp\(ms\): (\d+)$', lines[5].strip())
             if timestamp_match:
                 return int(timestamp_match.group(1))
     except Exception as e:
