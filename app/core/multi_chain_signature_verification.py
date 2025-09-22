@@ -33,7 +33,8 @@ def verify_ethereum_signature(wallet_address: str, message: str, signature: str)
         # Recover the address from the signature
         recovered_address = Account.recover_message(message_hash, signature=signature)
         
-        # Compare addresses (case-insensitive)
+        # Compare addresses - normalize to lowercase for comparison
+        # Ethereum addresses can have different case but represent the same address
         return recovered_address.lower() == wallet_address.lower()
     
     except Exception as e:
@@ -272,8 +273,9 @@ def extract_timestamp_from_message(message: str) -> Optional[int]:
     """
     try:
         lines = message.strip().split('\n')
-        if len(lines) >= 4:
-            timestamp_match = re.match(r'^Timestamp\(ms\): (\d+)$', lines[3].strip())
+        # In the new 7-line format, timestamp is at line index 5 (6th line)
+        if len(lines) >= 6:
+            timestamp_match = re.match(r'^Timestamp\(ms\): (\d+)$', lines[5].strip())
             if timestamp_match:
                 return int(timestamp_match.group(1))
     except Exception as e:
