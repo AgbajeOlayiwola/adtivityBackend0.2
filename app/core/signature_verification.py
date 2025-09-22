@@ -40,10 +40,12 @@ def validate_message_format(message: str, expected_wallet: str, expected_company
     """
     Validate that the message follows the expected format.
     
-    Expected format:
+    Expected format (6 lines):
     Adtivity Wallet Verification
     Wallet: 0x...
+    Network: ethereum/solana
     Company: uuid
+    ConnectionID: uuid
     Timestamp(ms): 1234567890
     Nonce: ...
     
@@ -58,8 +60,8 @@ def validate_message_format(message: str, expected_wallet: str, expected_company
     try:
         lines = message.strip().split('\n')
         
-        # Check we have exactly 5 lines
-        if len(lines) != 5:
+        # Check we have exactly 7 lines
+        if len(lines) != 7:
             return False
         
         # Check each line format
@@ -71,18 +73,26 @@ def validate_message_format(message: str, expected_wallet: str, expected_company
         if not wallet_match or wallet_match.group(1).lower() != expected_wallet.lower():
             return False
         
+        # Check network line
+        if not lines[2].strip().startswith('Network: '):
+            return False
+        
         # Check company line
-        company_match = re.match(r'^Company: ([a-f0-9-]{36})$', lines[2].strip())
+        company_match = re.match(r'^Company: ([a-f0-9-]{36})$', lines[3].strip())
         if not company_match or company_match.group(1) != expected_company:
             return False
         
+        # Check connection ID line
+        if not lines[4].strip().startswith('ConnectionID: '):
+            return False
+        
         # Check timestamp line
-        timestamp_match = re.match(r'^Timestamp\(ms\): (\d+)$', lines[3].strip())
+        timestamp_match = re.match(r'^Timestamp\(ms\): (\d+)$', lines[5].strip())
         if not timestamp_match:
             return False
         
         # Check nonce line
-        if not lines[4].strip().startswith('Nonce: '):
+        if not lines[6].strip().startswith('Nonce: '):
             return False
         
         return True
@@ -172,4 +182,6 @@ def verify_wallet_ownership(
         return False, "Invalid signature"
     
     return True, "Wallet ownership verified"
+
+
 
