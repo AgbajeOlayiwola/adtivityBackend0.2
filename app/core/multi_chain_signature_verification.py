@@ -175,6 +175,15 @@ def validate_message_format_multi_chain(message: str, expected_wallet: str, expe
     """
     Validate message format for any wallet type.
     
+    Expected format (7 lines):
+    Adtivity Wallet Verification
+    Wallet: 0x... or Solana address
+    Network: ethereum/solana
+    Company: uuid
+    ConnectionID: uuid
+    Timestamp(ms): 1234567890
+    Nonce: ...
+    
     Args:
         message: The message to validate
         expected_wallet: The expected wallet address
@@ -186,8 +195,8 @@ def validate_message_format_multi_chain(message: str, expected_wallet: str, expe
     try:
         lines = message.strip().split('\n')
         
-        # Check we have exactly 5 lines
-        if len(lines) != 5:
+        # Check we have exactly 7 lines
+        if len(lines) != 7:
             return False
         
         # Check header
@@ -199,18 +208,26 @@ def validate_message_format_multi_chain(message: str, expected_wallet: str, expe
         if not wallet_match or wallet_match.group(1) != expected_wallet:
             return False
         
+        # Check network line
+        if not lines[2].strip().startswith('Network: '):
+            return False
+        
         # Check company line
-        company_match = re.match(r'^Company: ([a-f0-9-]{36})$', lines[2].strip())
+        company_match = re.match(r'^Company: ([a-f0-9-]{36})$', lines[3].strip())
         if not company_match or company_match.group(1) != expected_company:
             return False
         
+        # Check connection ID line
+        if not lines[4].strip().startswith('ConnectionID: '):
+            return False
+        
         # Check timestamp line
-        timestamp_match = re.match(r'^Timestamp\(ms\): (\d+)$', lines[3].strip())
+        timestamp_match = re.match(r'^Timestamp\(ms\): (\d+)$', lines[5].strip())
         if not timestamp_match:
             return False
         
         # Check nonce line
-        if not lines[4].strip().startswith('Nonce: '):
+        if not lines[6].strip().startswith('Nonce: '):
             return False
         
         return True
