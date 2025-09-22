@@ -5,6 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from .background_tasks import background_task_service
+from .wallet_sync_service import wallet_sync_service
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,10 @@ async def startup_tasks():
     logger.info("🚀 Starting background services...")
     
     # Start Twitter auto-sync in background
-    sync_task = asyncio.create_task(background_task_service.start_auto_sync())
+    twitter_sync_task = asyncio.create_task(background_task_service.start_auto_sync())
+    
+    # Start wallet auto-sync in background
+    wallet_sync_task = asyncio.create_task(wallet_sync_service.start_auto_sync())
     
     try:
         yield
@@ -24,14 +28,22 @@ async def startup_tasks():
         # Shutdown
         logger.info("🛑 Shutting down background services...")
         
-        # Stop auto-sync
+        # Stop auto-sync services
         background_task_service.stop_auto_sync()
+        wallet_sync_service.stop_auto_sync()
         
-        # Cancel the sync task
-        sync_task.cancel()
+        # Cancel the sync tasks
+        twitter_sync_task.cancel()
+        wallet_sync_task.cancel()
+        
         try:
-            await sync_task
+            await twitter_sync_task
         except asyncio.CancelledError:
-            logger.info("✅ Background sync task cancelled")
+            logger.info("✅ Twitter sync task cancelled")
+            
+        try:
+            await wallet_sync_task
+        except asyncio.CancelledError:
+            logger.info("✅ Wallet sync task cancelled")
         
         logger.info("✅ Background services stopped")
