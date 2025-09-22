@@ -1313,6 +1313,7 @@ class WalletActivityResponse(WalletActivityBase):
         data = {
             "id": str(obj.id),
             "wallet_connection_id": str(obj.wallet_connection_id),
+            "activity_type": obj.activity_type,
             "transaction_hash": obj.transaction_hash,
             "block_number": obj.block_number,
             "transaction_type": obj.transaction_type,
