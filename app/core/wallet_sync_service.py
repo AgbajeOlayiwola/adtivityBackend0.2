@@ -18,7 +18,7 @@ class WalletSyncService:
     
     def __init__(self):
         self.is_running = False
-        self.sync_interval = 3600  # 1 hour in seconds
+        self.sync_interval = 60  # 60 seconds for frequent updates
         self.batch_size = 10  # Process wallets in batches
         self.max_concurrent = 3  # Maximum concurrent wallet fetches
     
@@ -49,16 +49,14 @@ class WalletSyncService:
         """Sync all wallet connections in the database."""
         db = SessionLocal()
         try:
-            # Get all verified wallet connections
-            wallets = db.query(WalletConnection).filter(
-                WalletConnection.is_verified == True
-            ).all()
+            # Get ALL wallet connections (verified and unverified)
+            wallets = db.query(WalletConnection).all()
             
             if not wallets:
-                logger.info("No verified wallet connections found")
+                logger.info("No wallet connections found")
                 return
             
-            logger.info(f"Found {len(wallets)} verified wallet connections to sync")
+            logger.info(f"Found {len(wallets)} wallet connections to sync")
             
             # Process wallets in batches
             for i in range(0, len(wallets), self.batch_size):

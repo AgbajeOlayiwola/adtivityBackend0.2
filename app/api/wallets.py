@@ -222,6 +222,16 @@ async def verify_wallet_connection(
             # Mark wallet as verified in database
             verified_wallet = wallet_crud.verify_wallet_connection(db, wallet.id)
             if verified_wallet:
+                # Trigger initial sync for the newly verified wallet
+                try:
+                    from ..core.wallet_sync_service import wallet_sync_service
+                    # Start initial sync in background
+                    import asyncio
+                    asyncio.create_task(wallet_sync_service.sync_wallet_on_connect(str(verified_wallet.id)))
+                except Exception as sync_error:
+                    # Log sync error but don't fail the verification
+                    print(f"Warning: Failed to trigger initial sync: {sync_error}")
+                
                 return WalletVerificationResponse(
                     verified=True,
                     message="Wallet verified successfully",
