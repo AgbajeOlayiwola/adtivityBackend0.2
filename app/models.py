@@ -563,6 +563,7 @@ class WalletActivity(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
     wallet_connection_id = Column(UUID(as_uuid=True), ForeignKey("wallet_connections.id"), nullable=False, index=True)
+    activity_type = Column(String, nullable=False)  # Required field for database compatibility
     transaction_hash = Column(String, nullable=False, index=True)
     block_number = Column(Integer)
     transaction_type = Column(String, nullable=False)  # 'send', 'receive', 'swap', 'mint', etc.
