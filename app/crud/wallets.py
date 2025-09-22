@@ -26,7 +26,7 @@ class WalletCRUD:
         """Create a new wallet connection."""
         db_wallet = WalletConnection(
             company_id=wallet_data.company_id,
-            wallet_address=wallet_data.wallet_address.lower(),  # Normalize to lowercase
+            wallet_address=wallet_data.wallet_address,  # Store in original case
             wallet_type=wallet_data.wallet_type,
             network=wallet_data.network,
             wallet_name=wallet_data.wallet_name,
@@ -62,7 +62,7 @@ class WalletCRUD:
         return db.query(WalletConnection).filter(
             and_(
                 WalletConnection.company_id == company_id,
-                WalletConnection.wallet_address == wallet_address.lower()
+                WalletConnection.wallet_address == wallet_address
             )
         ).first()
     

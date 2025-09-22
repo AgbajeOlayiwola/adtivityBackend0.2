@@ -117,8 +117,8 @@ def get_client_app_user_by_email(db: Session, email: str) -> Optional[ClientAppU
     return db.query(ClientAppUser).filter(ClientAppUser.email == email).first()
 
 def get_client_app_user_by_wallet(db: Session, wallet_address: str) -> Optional[ClientAppUser]:
-    """Retrieves a client application user by their wallet address (case-insensitive)."""
-    return db.query(ClientAppUser).filter(func.lower(ClientAppUser.wallet_address) == func.lower(wallet_address)).first()
+    """Retrieves a client application user by their wallet address (case-sensitive)."""
+    return db.query(ClientAppUser).filter(ClientAppUser.wallet_address == wallet_address).first()
 
 def get_client_app_user(db: Session, user_id: int) -> Optional[ClientAppUser]:
     """Retrieves a client application user by their unique ID."""
