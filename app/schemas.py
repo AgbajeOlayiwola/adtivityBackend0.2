@@ -1276,6 +1276,7 @@ class WalletConnectionResponse(WalletConnectionBase):
 
 class WalletActivityBase(BaseModel):
     """Base wallet activity schema."""
+    activity_type: str
     transaction_hash: str
     block_number: Optional[int] = None
     transaction_type: str
