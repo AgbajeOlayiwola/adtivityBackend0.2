@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     TWITTER_OAUTH_BASE_URL: str = Field(default="https://twitter.com/i/oauth2/authorize", description="Twitter OAuth authorization URL")
     TWITTER_TOKEN_URL: str = Field(default="https://api.twitter.com/2/oauth2/token", description="Twitter OAuth token URL")
     
+    # Blockchain Explorer API Configuration
+    ETHERSCAN_API_KEY: Optional[str] = Field(default=None, description="Etherscan API key for Ethereum data")
+    ALCHEMY_API_KEY: Optional[str] = Field(default=None, description="Alchemy API key for blockchain data")
+    MORALIS_API_KEY: Optional[str] = Field(default=None, description="Moralis API key for blockchain data")
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
