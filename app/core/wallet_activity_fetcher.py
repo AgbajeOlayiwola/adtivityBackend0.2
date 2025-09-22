@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc
@@ -60,7 +60,7 @@ class WalletActivityFetcher:
                 recent_activity = db.query(WalletActivity).filter(
                     and_(
                         WalletActivity.wallet_connection_id == wallet_connection_id,
-                        WalletActivity.timestamp >= datetime.utcnow() - timedelta(hours=1)
+                        WalletActivity.timestamp >= datetime.now(timezone.utc) - timedelta(hours=1)
                     )
                 ).first()
                 
@@ -72,9 +72,9 @@ class WalletActivityFetcher:
                         'transactions_fetched': 0
                     }
             
-            # Calculate date range
-            end_date = datetime.utcnow()
-            start_date = end_date - timedelta(days=days_back)
+            # Calculate date range (use a longer period to catch more transactions)
+            end_date = datetime.now(timezone.utc)
+            start_date = end_date - timedelta(days=max(days_back, 30))  # At least 30 days
             
             logger.info(f"Fetching activities for wallet {wallet.wallet_address} from {start_date} to {end_date}")
             
@@ -93,10 +93,15 @@ class WalletActivityFetcher:
                 }
             
             # Filter transactions by date range
-            filtered_transactions = [
-                tx for tx in transactions 
-                if start_date <= tx.get('timestamp', datetime.min) <= end_date
-            ]
+            filtered_transactions = []
+            for tx in transactions:
+                tx_timestamp = tx.get('timestamp')
+                if tx_timestamp:
+                    # Ensure timestamp is timezone-aware
+                    if tx_timestamp.tzinfo is None:
+                        tx_timestamp = tx_timestamp.replace(tzinfo=timezone.utc)
+                    if start_date <= tx_timestamp <= end_date:
+                        filtered_transactions.append(tx)
             
             logger.info(f"Found {len(filtered_transactions)} transactions in date range")
             
@@ -160,7 +165,7 @@ class WalletActivityFetcher:
                     gas_fee_usd=tx.get('gas_fee_usd'),  # Would need price data
                     network=tx.get('network', 'ethereum'),
                     status=tx.get('status', 'confirmed'),
-                    timestamp=tx.get('timestamp', datetime.utcnow()),
+                    timestamp=tx.get('timestamp', datetime.now(timezone.utc)),
                     transaction_metadata=tx.get('transaction_metadata', {})
                 )
                 

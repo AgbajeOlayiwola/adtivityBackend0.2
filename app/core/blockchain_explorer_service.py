@@ -3,7 +3,7 @@
 import asyncio
 import httpx
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional, Union
 from decimal import Decimal
 import json
@@ -139,7 +139,7 @@ class BlockchainExplorerService:
                         'value': 0,
                         'gas_used': 0,
                         'gas_price': 0,
-                        'timestamp': datetime.utcnow(),
+                        'timestamp': datetime.now(timezone.utc),
                         'status': 'confirmed',
                         'transaction_type': 'nft_hold',
                         'network': 'solana',
@@ -168,7 +168,7 @@ class BlockchainExplorerService:
                         'value': float(token.get('amount', 0)),
                         'gas_used': 0,
                         'gas_price': 0,
-                        'timestamp': datetime.utcnow(),
+                        'timestamp': datetime.now(timezone.utc),
                         'status': 'confirmed',
                         'transaction_type': 'token_balance',
                         'network': 'solana',
@@ -515,7 +515,7 @@ class BlockchainExplorerService:
                 try:
                     timestamp_dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
                 except:
-                    timestamp_dt = datetime.utcnow()
+                    timestamp_dt = datetime.now(timezone.utc)
             else:
                 timestamp_dt = datetime.utcnow()
             

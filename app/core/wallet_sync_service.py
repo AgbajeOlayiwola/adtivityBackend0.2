@@ -18,9 +18,9 @@ class WalletSyncService:
     
     def __init__(self):
         self.is_running = False
-        self.sync_interval = 60  # 60 seconds for frequent updates
-        self.batch_size = 10  # Process wallets in batches
-        self.max_concurrent = 3  # Maximum concurrent wallet fetches
+        self.sync_interval = 7200  # 2 hours for regular updates to save CU
+        self.batch_size = 5  # Smaller batches to reduce CU usage
+        self.max_concurrent = 2  # Reduced concurrency to save resources
     
     async def start_auto_sync(self):
         """Start automatic wallet activity syncing."""
@@ -46,7 +46,10 @@ class WalletSyncService:
         logger.info("🛑 Stopping automatic wallet sync service")
     
     async def _sync_all_wallets(self):
-        """Sync all wallet connections in the database."""
+        """Sync all wallet connections in the database with smart filtering."""
+        from app.models import WalletActivity
+        from datetime import datetime, timezone, timedelta
+        
         db = SessionLocal()
         try:
             # Get ALL wallet connections (verified and unverified)
@@ -56,16 +59,37 @@ class WalletSyncService:
                 logger.info("No wallet connections found")
                 return
             
-            logger.info(f"Found {len(wallets)} wallet connections to sync")
+            logger.info(f"Found {len(wallets)} total wallet connections")
+            
+            # Smart filtering: only sync wallets that need it
+            wallets_to_sync = []
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=2)  # Only sync if last activity > 2 hours ago
+            
+            for wallet in wallets:
+                # Check if wallet has recent activities
+                last_activity = db.query(WalletActivity).filter(
+                    WalletActivity.wallet_connection_id == wallet.id
+                ).order_by(WalletActivity.timestamp.desc()).first()
+                
+                if not last_activity or last_activity.timestamp < cutoff_time:
+                    wallets_to_sync.append(wallet)
+                else:
+                    logger.debug(f"Skipping {wallet.wallet_address} - has recent activity")
+            
+            logger.info(f"Smart sync: {len(wallets_to_sync)}/{len(wallets)} wallets need syncing")
+            
+            if not wallets_to_sync:
+                logger.info("No wallets need syncing - skipping batch")
+                return
             
             # Process wallets in batches
-            for i in range(0, len(wallets), self.batch_size):
-                batch = wallets[i:i + self.batch_size]
+            for i in range(0, len(wallets_to_sync), self.batch_size):
+                batch = wallets_to_sync[i:i + self.batch_size]
                 await self._sync_wallet_batch(batch)
                 
                 # Add delay between batches to respect rate limits
-                if i + self.batch_size < len(wallets):
-                    await asyncio.sleep(5)
+                if i + self.batch_size < len(wallets_to_sync):
+                    await asyncio.sleep(10)  # Increased delay to reduce CU usage
             
         except Exception as e:
             logger.error(f"Error in _sync_all_wallets: {e}")
@@ -74,12 +98,6 @@ class WalletSyncService:
     
     async def _sync_wallet_batch(self, wallets: List[WalletConnection]):
         """Sync a batch of wallets concurrently."""
-        tasks = []
-        
-        for wallet in wallets:
-            task = self._sync_single_wallet(wallet)
-            tasks.append(task)
-        
         # Run tasks with concurrency limit
         semaphore = asyncio.Semaphore(self.max_concurrent)
         
@@ -156,9 +174,12 @@ class WalletSyncService:
         try:
             logger.info(f"Initial sync for new wallet connection {wallet_connection_id}")
             
+            # Add small delay to prevent overwhelming the system
+            await asyncio.sleep(2)
+            
             result = await wallet_activity_fetcher.fetch_wallet_activities(
                 wallet_connection_id,
-                days_back=90,  # Fetch more history for new connections
+                days_back=30,  # Reduced from 90 to save CU
                 force_refresh=True
             )
             
