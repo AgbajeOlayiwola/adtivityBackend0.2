@@ -30,7 +30,7 @@ class BlockchainExplorerService:
             'optimism': 'https://deep-index.moralis.io/api/v2.2',
             'base': 'https://deep-index.moralis.io/api/v2.2',
             'avalanche': 'https://deep-index.moralis.io/api/v2.2',
-            'solana': 'https://deep-index.moralis.io/api/v2.2'
+            'solana': 'https://solana-gateway.moralis.io'
         }
         
         # Chain IDs for Moralis
@@ -77,6 +77,12 @@ class BlockchainExplorerService:
             List of transaction data dictionaries
         """
         try:
+            # Handle Solana with special endpoint
+            if network.lower() == 'solana':
+                return await self._fetch_solana_transactions(
+                    wallet_address, start_block, end_block, limit
+                )
+            
             # Use Moralis for multi-chain support
             if network.lower() in self.moralis_base_urls:
                 return await self._fetch_moralis_transactions(
@@ -93,6 +99,95 @@ class BlockchainExplorerService:
                 
         except Exception as e:
             logger.error(f"Error fetching transactions for {wallet_address}: {e}")
+            return []
+    
+    async def _fetch_solana_transactions(
+        self,
+        wallet_address: str,
+        start_block: Optional[int] = None,
+        end_block: Optional[int] = None,
+        limit: int = 1000
+    ) -> List[Dict[str, Any]]:
+        """Fetch transactions from Moralis Solana API."""
+        try:
+            # Use Solana-specific Moralis endpoint
+            base_url = self.moralis_base_urls['solana']
+            url = f"{base_url}/account/mainnet/{wallet_address}/portfolio"
+            
+            headers = {
+                'Accept': 'application/json',
+                'X-API-Key': self.moralis_api_key
+            }
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                # Process Solana portfolio data
+                processed_transactions = []
+                
+                # Extract NFT data if available
+                nfts = data.get('nfts', [])
+                for nft in nfts[:limit]:
+                    processed_tx = {
+                        'transaction_hash': f"solana_nft_{nft.get('mint', 'unknown')}",
+                        'block_number': 0,  # Solana doesn't use block numbers the same way
+                        'from_address': wallet_address,
+                        'to_address': wallet_address,
+                        'value': 0,
+                        'gas_used': 0,
+                        'gas_price': 0,
+                        'timestamp': datetime.utcnow(),
+                        'status': 'confirmed',
+                        'transaction_type': 'nft_hold',
+                        'network': 'solana',
+                        'token_address': nft.get('mint', ''),
+                        'token_symbol': nft.get('name', ''),
+                        'token_name': nft.get('name', ''),
+                        'amount': 1,
+                        'token_id': nft.get('mint', ''),
+                        'transaction_metadata': {
+                            'moralis_data': nft,
+                            'collection': nft.get('collection', ''),
+                            'image': nft.get('image', ''),
+                            'description': nft.get('description', '')
+                        }
+                    }
+                    processed_transactions.append(processed_tx)
+                
+                # Extract token balances if available
+                tokens = data.get('tokens', [])
+                for token in tokens[:limit]:
+                    processed_tx = {
+                        'transaction_hash': f"solana_token_{token.get('mint', 'unknown')}",
+                        'block_number': 0,
+                        'from_address': wallet_address,
+                        'to_address': wallet_address,
+                        'value': float(token.get('amount', 0)),
+                        'gas_used': 0,
+                        'gas_price': 0,
+                        'timestamp': datetime.utcnow(),
+                        'status': 'confirmed',
+                        'transaction_type': 'token_balance',
+                        'network': 'solana',
+                        'token_address': token.get('mint', ''),
+                        'token_symbol': token.get('symbol', ''),
+                        'token_name': token.get('name', ''),
+                        'amount': float(token.get('amount', 0)),
+                        'transaction_metadata': {
+                            'moralis_data': token,
+                            'decimals': token.get('decimals', 0),
+                            'price_usd': token.get('price_usd', 0)
+                        }
+                    }
+                    processed_transactions.append(processed_tx)
+                
+                return processed_transactions
+                
+        except Exception as e:
+            logger.error(f"Failed to fetch Solana transactions: {e}")
             return []
     
     async def _fetch_ethereum_transactions(
