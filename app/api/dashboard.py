@@ -981,7 +981,7 @@ async def web3_wallet_analytics(
     wallet_events = db.query(models.Web3Event).filter(
         and_(
             models.Web3Event.client_company_id.in_([uuid.UUID(cid) for cid in company_ids]),
-            models.Web3Event.wallet_address == wallet_address.lower(),
+            models.Web3Event.wallet_address == wallet_address,
             models.Web3Event.timestamp >= start_date,
             models.Web3Event.timestamp <= end_date
         )
