@@ -29,7 +29,8 @@ class BlockchainExplorerService:
             'arbitrum': 'https://deep-index.moralis.io/api/v2.2',
             'optimism': 'https://deep-index.moralis.io/api/v2.2',
             'base': 'https://deep-index.moralis.io/api/v2.2',
-            'avalanche': 'https://deep-index.moralis.io/api/v2.2'
+            'avalanche': 'https://deep-index.moralis.io/api/v2.2',
+            'solana': 'https://deep-index.moralis.io/api/v2.2'
         }
         
         # Chain IDs for Moralis
@@ -40,7 +41,8 @@ class BlockchainExplorerService:
             'arbitrum': '0xa4b1',
             'optimism': '0xa',
             'base': '0x2105',
-            'avalanche': '0xa86a'
+            'avalanche': '0xa86a',
+            'solana': 'solana'
         }
         
         # Etherscan as fallback for Ethereum
@@ -277,7 +279,8 @@ class BlockchainExplorerService:
             'arbitrum': 'arbitrum',
             'optimism': 'optimism',
             'base': 'base',
-            'avalanche': 'avalanche'
+            'avalanche': 'avalanche',
+            'solana': 'solana'
         }
         return chain_mapping.get(network, 'eth')
     
