@@ -51,6 +51,16 @@ async def create_wallet_connection(
         # Create wallet connection
         wallet_connection = wallet_crud.create_wallet_connection(db, wallet_data)
         
+        # Trigger initial sync for the newly connected wallet
+        try:
+            from ..core.wallet_sync_service import wallet_sync_service
+            # Start initial sync in background
+            import asyncio
+            asyncio.create_task(wallet_sync_service.sync_wallet_on_connect(str(wallet_connection.id)))
+        except Exception as sync_error:
+            # Log sync error but don't fail the connection
+            print(f"Warning: Failed to trigger initial sync: {sync_error}")
+        
         return WalletConnectionResponse.from_orm(wallet_connection)
         
     except HTTPException:
