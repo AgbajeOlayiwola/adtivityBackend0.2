@@ -58,11 +58,12 @@ app.add_middleware(
     CustomCORSMiddleware,
     restricted_origins=[
         "https://adtivity.vercel.app",  # Your Vercel frontend
+        "https://adtivity.xyz",         # Your new frontend domain
         "http://localhost:3000",        # Local development
         "http://localhost:3001",        # Local development
         "http://localhost:8080",        # Local development
         "http://localhost:9999",        # Local development
-        "http://localhost:3002", 
+        "http://localhost:3002",        # Local development
     ],
     sdk_paths=["/sdk/", "/sdk/event", "/sdk/events"]
 )
@@ -88,6 +89,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     # Set CORS headers
     if origin and origin in [
         "https://adtivity.vercel.app",
+        "https://adtivity.xyz",
         "http://localhost:3000",
         "http://localhost:3001", 
         "http://localhost:8080",
