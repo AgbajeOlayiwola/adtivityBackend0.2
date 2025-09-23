@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     ETHERSCAN_API_KEY: Optional[str] = Field(default=None, description="Etherscan API key for Ethereum data")
     ALCHEMY_API_KEY: Optional[str] = Field(default=None, description="Alchemy API key for blockchain data")
     MORALIS_API_KEY: Optional[str] = Field(default=None, description="Moralis API key for blockchain data")
+    HELIUS_API_KEY: Optional[str] = Field(default=None, description="Helius API key for Solana data")
     
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -48,6 +48,11 @@ class BlockchainExplorerService:
         # Etherscan as fallback for Ethereum
         self.etherscan_base_url = "https://api.etherscan.io/api"
         
+        # Helius for Solana transactions (free tier)
+        self.helius_base_url = "https://api.helius.xyz/v0"
+        self.helius_api_key = settings.HELIUS_API_KEY if hasattr(settings, 'HELIUS_API_KEY') else None
+        
+        
         # Rate limiting
         self.rate_limits = {
             'etherscan': {'requests_per_second': 5, 'requests_per_day': 100000},
@@ -108,7 +113,290 @@ class BlockchainExplorerService:
         end_block: Optional[int] = None,
         limit: int = 1000
     ) -> List[Dict[str, Any]]:
-        """Fetch transactions from Moralis Solana API."""
+        """Fetch transactions from Helius API (free tier) with Moralis fallback."""
+        try:
+            if not self.helius_api_key:
+                logger.warning("Helius API key not configured, falling back to Moralis")
+                return await self._fetch_solana_moralis_fallback(wallet_address, limit)
+            
+            # Try Helius first
+            try:
+                helius_result = await self._fetch_solana_helius_transactions(wallet_address, limit)
+                if helius_result:
+                    logger.info(f"Successfully fetched {len(helius_result)} transactions from Helius")
+                    return helius_result
+                else:
+                    logger.warning("Helius returned empty result, falling back to Moralis")
+                    return await self._fetch_solana_moralis_fallback(wallet_address, limit)
+            except Exception as helius_error:
+                logger.warning(f"Helius API failed: {helius_error}, falling back to Moralis")
+                return await self._fetch_solana_moralis_fallback(wallet_address, limit)
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch Solana transactions: {e}")
+            return []
+    
+    async def _fetch_solana_helius_transactions(self, wallet_address: str, limit: int) -> List[Dict[str, Any]]:
+        """Fetch Solana transactions from Helius Enhanced Transactions API."""
+        try:
+            # Use Helius Enhanced Transactions API with correct format
+            url = f"{self.helius_base_url}/addresses/{wallet_address}/transactions"
+            
+            # Helius only needs api-key parameter (no limit parameter)
+            params = {
+                'api-key': self.helius_api_key
+            }
+            
+            headers = {
+                'Accept': 'application/json'
+            }
+            
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(url, params=params, headers=headers)
+                response.raise_for_status()
+                
+                data = response.json()
+                return self._process_helius_solana_transactions(data, wallet_address)
+                
+        except Exception as e:
+            logger.error(f"Failed to fetch Helius Solana transactions: {e}")
+            return []
+    
+    
+    def _process_helius_solana_transactions(self, data: Dict[str, Any], wallet_address: str) -> List[Dict[str, Any]]:
+        """Process Helius Solana transaction data."""
+        processed_transactions = []
+        
+        try:
+            transactions = data if isinstance(data, list) else data.get('transactions', [])
+            
+            for tx in transactions:
+                try:
+                    # Extract transaction data from Helius Enhanced Transactions API
+                    signature = tx.get('signature', '')
+                    slot = tx.get('slot', 0)
+                    timestamp = tx.get('timestamp', 0)
+                    fee = tx.get('fee', 0)
+                    success = tx.get('success', True)
+                    
+                    # Get transaction type and amount from Helius enhanced data
+                    tx_type = 'transfer'
+                    amount = 0
+                    token_symbol = 'SOL'
+                    token_name = 'Solana'
+                    
+                    # Check for native transfers
+                    native_transfers = tx.get('nativeTransfers', [])
+                    if native_transfers:
+                        for transfer in native_transfers:
+                            if transfer.get('fromUserAccount') == wallet_address:
+                                tx_type = 'send'
+                                amount = abs(transfer.get('amount', 0)) / 1e9  # Convert lamports to SOL
+                            elif transfer.get('toUserAccount') == wallet_address:
+                                tx_type = 'receive'
+                                amount = abs(transfer.get('amount', 0)) / 1e9
+                    
+                    # Check for token transfers
+                    token_transfers = tx.get('tokenTransfers', [])
+                    if token_transfers:
+                        tx_type = 'token_transfer'
+                        for transfer in token_transfers:
+                            if transfer.get('fromUserAccount') == wallet_address:
+                                amount = abs(transfer.get('tokenAmount', 0))
+                                token_symbol = transfer.get('mint', 'UNKNOWN')
+                            elif transfer.get('toUserAccount') == wallet_address:
+                                amount = abs(transfer.get('tokenAmount', 0))
+                                token_symbol = transfer.get('mint', 'UNKNOWN')
+                    
+                    # Check for NFT transfers
+                    nft_transfers = tx.get('nftTransfers', [])
+                    if nft_transfers:
+                        tx_type = 'nft_transfer'
+                        for transfer in nft_transfers:
+                            if transfer.get('fromUserAccount') == wallet_address:
+                                amount = 1  # NFT count
+                                token_symbol = transfer.get('mint', 'NFT')
+                            elif transfer.get('toUserAccount') == wallet_address:
+                                amount = 1
+                                token_symbol = transfer.get('mint', 'NFT')
+                    
+                    # Convert timestamp
+                    if timestamp:
+                        tx_timestamp = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+                    else:
+                        tx_timestamp = datetime.now(timezone.utc)
+                    
+                    processed_tx = {
+                        'transaction_hash': signature,
+                        'block_number': slot,
+                        'from_address': wallet_address,
+                        'to_address': wallet_address,
+                        'value': amount,
+                        'gas_used': fee,
+                        'gas_price': 0,  # Solana doesn't use gas price
+                        'timestamp': tx_timestamp,
+                        'status': 'confirmed' if success else 'failed',
+                        'transaction_type': tx_type,
+                        'network': 'solana',
+                        'token_address': '',
+                        'token_symbol': token_symbol,
+                        'token_name': token_name,
+                        'amount': amount,
+                        'amount_usd': 0,  # Would need price data
+                        'transaction_metadata': {
+                            'helius_data': tx,
+                            'slot': slot,
+                            'fee': fee,
+                            'native_transfers': native_transfers,
+                            'token_transfers': token_transfers,
+                            'nft_transfers': nft_transfers,
+                            'instructions': tx.get('instructions', []),
+                            'events': tx.get('events', [])
+                        }
+                    }
+                    processed_transactions.append(processed_tx)
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to process Helius transaction: {e}")
+                    continue
+            
+            return processed_transactions
+            
+        except Exception as e:
+            logger.error(f"Failed to process Helius data: {e}")
+            return []
+    
+    async def _get_solana_transaction_details(self, endpoint: str, signatures: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Get full transaction details for signatures."""
+        transactions = []
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for sig_data in signatures:
+                signature = sig_data.get('signature')
+                if not signature:
+                    continue
+                
+                payload = {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "getTransaction",
+                    "params": [
+                        signature,
+                        {
+                            "encoding": "json",
+                            "maxSupportedTransactionVersion": 0
+                        }
+                    ]
+                }
+                
+                try:
+                    response = await client.post(endpoint, json=payload)
+                    response.raise_for_status()
+                    data = response.json()
+                    transaction = data.get('result')
+                    if transaction:
+                        transactions.append(transaction)
+                except Exception as e:
+                    logger.warning(f"Failed to get transaction {signature}: {e}")
+                    continue
+        
+        return transactions
+    
+    def _process_solana_rpc_transactions(self, transactions: List[Dict[str, Any]], wallet_address: str) -> List[Dict[str, Any]]:
+        """Process Solana RPC transaction data."""
+        processed_transactions = []
+        
+        for tx in transactions:
+            try:
+                # Extract transaction details
+                signature = tx.get('transaction', {}).get('signatures', [''])[0]
+                slot = tx.get('slot', 0)
+                meta = tx.get('meta', {})
+                
+                # Calculate balance changes
+                pre_balances = meta.get('preBalances', [])
+                post_balances = meta.get('postBalances', [])
+                fee = meta.get('fee', 0)
+                
+                # Determine transaction type and amount
+                tx_type = 'transfer'
+                amount = 0
+                amount_usd = 0
+                
+                if pre_balances and post_balances:
+                    balance_change = post_balances[0] - pre_balances[0] if len(post_balances) > 0 and len(pre_balances) > 0 else 0
+                    amount = abs(balance_change) / 1e9  # Convert lamports to SOL
+                    
+                    # Determine if it's inflow or outflow
+                    if balance_change > 0:
+                        tx_type = 'receive'
+                    elif balance_change < 0:
+                        tx_type = 'send'
+                
+                # Check for token transfers
+                pre_token_balances = meta.get('preTokenBalances', [])
+                post_token_balances = meta.get('postTokenBalances', [])
+                
+                if pre_token_balances or post_token_balances:
+                    tx_type = 'token_transfer'
+                    # Process token transfers
+                    for token_balance in post_token_balances:
+                        if token_balance.get('owner') == wallet_address:
+                            token_amount = float(token_balance.get('uiTokenAmount', {}).get('amount', 0))
+                            if token_amount > 0:
+                                amount = token_amount
+                                break
+                
+                # Convert timestamp
+                block_time = tx.get('blockTime')
+                if block_time:
+                    timestamp = datetime.fromtimestamp(block_time, tz=timezone.utc)
+                else:
+                    timestamp = datetime.now(timezone.utc)
+                
+                processed_tx = {
+                    'transaction_hash': signature,
+                    'block_number': slot,
+                    'from_address': wallet_address,
+                    'to_address': wallet_address,
+                    'value': amount,
+                    'gas_used': fee,
+                    'gas_price': 0,  # Solana doesn't use gas price
+                    'timestamp': timestamp,
+                    'status': 'confirmed' if not meta.get('err') else 'failed',
+                    'transaction_type': tx_type,
+                    'network': 'solana',
+                    'token_address': '',
+                    'token_symbol': 'SOL',
+                    'token_name': 'Solana',
+                    'amount': amount,
+                    'amount_usd': amount_usd,
+                    'transaction_metadata': {
+                        'solana_rpc_data': tx,
+                        'slot': slot,
+                        'fee': fee,
+                        'pre_balances': pre_balances,
+                        'post_balances': post_balances,
+                        'token_balances': {
+                            'pre': pre_token_balances,
+                            'post': post_token_balances
+                        }
+                    }
+                }
+                processed_transactions.append(processed_tx)
+                
+            except Exception as e:
+                logger.warning(f"Failed to process Solana transaction: {e}")
+                continue
+        
+        return processed_transactions
+    
+    async def _fetch_solana_moralis_fallback(
+        self,
+        wallet_address: str,
+        limit: int = 1000
+    ) -> List[Dict[str, Any]]:
+        """Fallback to Moralis if RPC fails."""
         try:
             # Use Solana-specific Moralis endpoint
             base_url = self.moralis_base_urls['solana']
@@ -131,12 +419,21 @@ class BlockchainExplorerService:
                 # Extract NFT data if available
                 nfts = data.get('nfts', [])
                 for nft in nfts[:limit]:
+                    # Try to get price from various possible fields
+                    price_usd = 0
+                    if 'price_usd' in nft:
+                        price_usd = float(nft.get('price_usd', 0))
+                    elif 'price' in nft:
+                        price_usd = float(nft.get('price', 0))
+                    elif 'value' in nft:
+                        price_usd = float(nft.get('value', 0))
+                    
                     processed_tx = {
                         'transaction_hash': f"solana_nft_{nft.get('mint', 'unknown')}",
                         'block_number': 0,  # Solana doesn't use block numbers the same way
                         'from_address': wallet_address,
                         'to_address': wallet_address,
-                        'value': 0,
+                        'value': price_usd,
                         'gas_used': 0,
                         'gas_price': 0,
                         'timestamp': datetime.now(timezone.utc) - timedelta(days=1),  # Use yesterday's timestamp for portfolio data
@@ -147,12 +444,14 @@ class BlockchainExplorerService:
                         'token_symbol': nft.get('name', ''),
                         'token_name': nft.get('name', ''),
                         'amount': 1,
+                        'amount_usd': price_usd,
                         'token_id': nft.get('mint', ''),
                         'transaction_metadata': {
                             'moralis_data': nft,
                             'collection': nft.get('collection', ''),
                             'image': nft.get('image', ''),
-                            'description': nft.get('description', '')
+                            'description': nft.get('description', ''),
+                            'price_usd': price_usd
                         }
                     }
                     processed_transactions.append(processed_tx)
@@ -160,12 +459,16 @@ class BlockchainExplorerService:
                 # Extract token balances if available
                 tokens = data.get('tokens', [])
                 for token in tokens[:limit]:
+                    amount = float(token.get('amount', 0))
+                    price_usd = float(token.get('price_usd', 0))
+                    amount_usd = amount * price_usd if price_usd > 0 else 0
+                    
                     processed_tx = {
                         'transaction_hash': f"solana_token_{token.get('mint', 'unknown')}",
                         'block_number': 0,
                         'from_address': wallet_address,
                         'to_address': wallet_address,
-                        'value': float(token.get('amount', 0)),
+                        'value': amount,
                         'gas_used': 0,
                         'gas_price': 0,
                         'timestamp': datetime.now(timezone.utc) - timedelta(days=1),  # Use yesterday's timestamp for portfolio data
@@ -175,11 +478,12 @@ class BlockchainExplorerService:
                         'token_address': token.get('mint', ''),
                         'token_symbol': token.get('symbol', ''),
                         'token_name': token.get('name', ''),
-                        'amount': float(token.get('amount', 0)),
+                        'amount': amount,
+                        'amount_usd': amount_usd,
                         'transaction_metadata': {
                             'moralis_data': token,
                             'decimals': token.get('decimals', 0),
-                            'price_usd': token.get('price_usd', 0)
+                            'price_usd': price_usd
                         }
                     }
                     processed_transactions.append(processed_tx)
@@ -189,6 +493,62 @@ class BlockchainExplorerService:
         except Exception as e:
             logger.error(f"Failed to fetch Solana transactions: {e}")
             return []
+    
+    def _process_solana_transaction_history(
+        self, 
+        data: Dict[str, Any], 
+        wallet_address: str, 
+        limit: int
+    ) -> List[Dict[str, Any]]:
+        """Process Solana transaction history data."""
+        processed_transactions = []
+        
+        # Process transaction history data
+        transactions = data.get('result', []) or data.get('transactions', [])
+        
+        for tx in transactions[:limit]:
+            processed_tx = {
+                'transaction_hash': tx.get('signature', ''),
+                'block_number': tx.get('slot', 0),
+                'from_address': wallet_address,
+                'to_address': tx.get('to_address', wallet_address),
+                'value': float(tx.get('amount', 0)),
+                'gas_used': tx.get('gas_used', 0),
+                'gas_price': tx.get('gas_price', 0),
+                'timestamp': datetime.fromtimestamp(tx.get('timestamp', 0), tz=timezone.utc),
+                'status': 'confirmed' if tx.get('success', True) else 'failed',
+                'transaction_type': self._determine_solana_transaction_type(tx),
+                'network': 'solana',
+                'token_address': tx.get('token_address'),
+                'token_symbol': tx.get('token_symbol'),
+                'token_name': tx.get('token_name'),
+                'amount': float(tx.get('amount', 0)),
+                'amount_usd': float(tx.get('amount_usd', 0)),
+                'transaction_metadata': {
+                    'raw_data': tx,
+                    'instruction_count': tx.get('instruction_count', 0),
+                    'fee': tx.get('fee', 0)
+                }
+            }
+            processed_transactions.append(processed_tx)
+        
+        return processed_transactions
+    
+    def _determine_solana_transaction_type(self, tx: Dict[str, Any]) -> str:
+        """Determine transaction type for Solana transaction."""
+        if tx.get('type') == 'transfer':
+            return 'transfer'
+        elif tx.get('type') == 'swap':
+            return 'swap'
+        elif tx.get('type') == 'nft':
+            return 'nft_transfer'
+        elif 'stake' in tx.get('description', '').lower():
+            return 'stake'
+        elif 'unstake' in tx.get('description', '').lower():
+            return 'unstake'
+        else:
+            return 'other'
+    
     
     async def _fetch_ethereum_transactions(
         self, 
