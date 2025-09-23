@@ -188,13 +188,26 @@ class BlockchainExplorerService:
                     # Check for native transfers
                     native_transfers = tx.get('nativeTransfers', [])
                     if native_transfers:
+                        # Calculate total volume for this transaction first
+                        total_volume = sum(abs(transfer.get('amount', 0)) / 1e9 for transfer in native_transfers)
+                        
+                        # Format to avoid scientific notation for very small numbers
+                        if total_volume > 0:
+                            # Use string formatting to avoid scientific notation
+                            formatted_amount = f"{total_volume:.9f}".rstrip('0').rstrip('.')
+                            # Keep as string to avoid automatic scientific notation conversion
+                            amount = formatted_amount if formatted_amount else "0"
+                        else:
+                            amount = "0"
+                            
+                        # Determine transaction type based on transfers
                         for transfer in native_transfers:
                             if transfer.get('fromUserAccount') == wallet_address:
                                 tx_type = 'send'
-                                amount = abs(transfer.get('amount', 0)) / 1e9  # Convert lamports to SOL
+                                break
                             elif transfer.get('toUserAccount') == wallet_address:
                                 tx_type = 'receive'
-                                amount = abs(transfer.get('amount', 0)) / 1e9
+                                break
                     
                     # Check for token transfers
                     token_transfers = tx.get('tokenTransfers', [])
@@ -233,7 +246,8 @@ class BlockchainExplorerService:
                         'to_address': wallet_address,
                         'value': amount,
                         'gas_used': fee,
-                        'gas_price': 0,  # Solana doesn't use gas price
+                        'gas_price': float(f"{(fee / 1e9):.9f}"),  # Convert lamports to SOL for gas price
+                        'gas_fee_usd': round((fee / 1e9) * 100, 6),  # Convert to SOL and multiply by price
                         'timestamp': tx_timestamp,
                         'status': 'confirmed' if success else 'failed',
                         'transaction_type': tx_type,
@@ -242,7 +256,7 @@ class BlockchainExplorerService:
                         'token_symbol': token_symbol,
                         'token_name': token_name,
                         'amount': amount,
-                        'amount_usd': 0,  # Would need price data
+                        'amount_usd': round(float(amount) * 100, 2),  # Basic SOL price estimate ($100 per SOL)
                         'transaction_metadata': {
                             'helius_data': tx,
                             'slot': slot,
