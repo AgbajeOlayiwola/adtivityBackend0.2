@@ -739,6 +739,7 @@ async def web3_analytics_overview(
                 "total_wallets": 0,
                 "total_contracts": 0,
                 "total_amount": 0,
+                "total_gas_spent": 0,
                 "active_chains": [],
                 "top_wallets": [],
                 "top_contracts": [],
@@ -770,6 +771,7 @@ async def web3_analytics_overview(
             "total_wallets": 0,
             "total_contracts": 0,
             "total_amount": 0,
+            "total_gas_spent": 0,
             "active_chains": [],
             "top_wallets": [],
             "top_contracts": [],
@@ -787,6 +789,7 @@ async def web3_analytics_overview(
     unique_contracts = set()
     unique_chains = set()
     total_amount = 0
+    total_gas_spent = 0
     wallet_activity = {}
     contract_activity = {}
     chain_activity = {}
@@ -808,6 +811,7 @@ async def web3_analytics_overview(
                     "wallet_address": event.wallet_address,
                     "interaction_count": 0,
                     "total_amount": 0,
+                    "total_gas_spent": 0,
                     "contracts_interacted": set(),
                     "chains_used": set()
                 }
@@ -823,6 +827,7 @@ async def web3_analytics_overview(
                     "contract_address": event.contract_address,
                     "interaction_count": 0,
                     "total_amount": 0,
+                    "total_gas_spent": 0,
                     "unique_wallets": set(),
                     "chains_used": set()
                 }
@@ -838,6 +843,7 @@ async def web3_analytics_overview(
                     "chain_id": event.chain_id,
                     "interaction_count": 0,
                     "total_amount": 0,
+                    "total_gas_spent": 0,
                     "unique_wallets": set(),
                     "unique_contracts": set()
                 }
@@ -847,25 +853,55 @@ async def web3_analytics_overview(
             if event.contract_address:
                 chain_activity[event.chain_id]["unique_contracts"].add(event.contract_address)
         
-        # Extract amount
+        # Extract amount and gas from properties
+        event_amount = 0
+        event_gas = 0
+        
         if event.properties:
-            amount_fields = ['amount', 'value', 'token_amount', 'eth_amount', 'usd_value']
+            # Extract amount from various possible fields
+            amount_fields = ['amount', 'value', 'token_amount', 'eth_amount', 'usd_value', 'transaction_value']
             for field in amount_fields:
                 if field in event.properties:
                     try:
-                        amount = float(event.properties[field])
-                        total_amount += amount
-                        
-                        # Add to wallet/contract/chain amounts
-                        if event.wallet_address and event.wallet_address in wallet_activity:
-                            wallet_activity[event.wallet_address]["total_amount"] += amount
-                        if event.contract_address and event.contract_address in contract_activity:
-                            contract_activity[event.contract_address]["total_amount"] += amount
-                        if event.chain_id and event.chain_id in chain_activity:
-                            chain_activity[event.chain_id]["total_amount"] += amount
+                        event_amount = float(event.properties[field])
                         break
                     except (ValueError, TypeError):
                         continue
+            
+            # Extract gas information
+            gas_fields = ['gas_fee', 'gas_fee_usd', 'gas_cost', 'gas_cost_usd', 'transaction_fee', 'fee_usd']
+            for field in gas_fields:
+                if field in event.properties:
+                    try:
+                        event_gas = float(event.properties[field])
+                        break
+                    except (ValueError, TypeError):
+                        continue
+            
+            # If no direct gas field, try to calculate from gas_used and gas_price
+            if event_gas == 0 and 'gas_used' in event.properties and 'gas_price' in event.properties:
+                try:
+                    gas_used = float(event.properties['gas_used'])
+                    gas_price = float(event.properties['gas_price'])
+                    # Convert from wei to ETH (gas_price is typically in wei)
+                    event_gas = (gas_used * gas_price) / 1e18
+                except (ValueError, TypeError):
+                    pass
+        
+        # Add to totals
+        total_amount += event_amount
+        total_gas_spent += event_gas
+        
+        # Add to wallet/contract/chain amounts
+        if event.wallet_address and event.wallet_address in wallet_activity:
+            wallet_activity[event.wallet_address]["total_amount"] += event_amount
+            wallet_activity[event.wallet_address]["total_gas_spent"] += event_gas
+        if event.contract_address and event.contract_address in contract_activity:
+            contract_activity[event.contract_address]["total_amount"] += event_amount
+            contract_activity[event.contract_address]["total_gas_spent"] += event_gas
+        if event.chain_id and event.chain_id in chain_activity:
+            chain_activity[event.chain_id]["total_amount"] += event_amount
+            chain_activity[event.chain_id]["total_gas_spent"] += event_gas
         
         # Collect recent activity (last 20 events)
         if len(recent_activity) < 20:
@@ -876,7 +912,8 @@ async def web3_analytics_overview(
                 "event_name": event.event_name,
                 "transaction_hash": event.transaction_hash,
                 "timestamp": event.timestamp.isoformat(),
-                "amount": amount if 'amount' in locals() else 0
+                "amount": event_amount,
+                "gas_spent": event_gas
             })
     
     # Format top wallets
@@ -886,6 +923,7 @@ async def web3_analytics_overview(
             "wallet_address": wallet_addr,
             "interaction_count": data["interaction_count"],
             "total_amount": data["total_amount"],
+            "total_gas_spent": data["total_gas_spent"],
             "contracts_interacted": len(data["contracts_interacted"]),
             "chains_used": len(data["chains_used"])
         })
@@ -898,6 +936,7 @@ async def web3_analytics_overview(
             "contract_address": contract_addr,
             "interaction_count": data["interaction_count"],
             "total_amount": data["total_amount"],
+            "total_gas_spent": data["total_gas_spent"],
             "unique_wallets": len(data["unique_wallets"]),
             "chains_used": len(data["chains_used"])
         })
@@ -910,6 +949,7 @@ async def web3_analytics_overview(
             "chain_id": chain_id,
             "interaction_count": data["interaction_count"],
             "total_amount": data["total_amount"],
+            "total_gas_spent": data["total_gas_spent"],
             "unique_wallets": len(data["unique_wallets"]),
             "unique_contracts": len(data["unique_contracts"])
         })
@@ -933,6 +973,7 @@ async def web3_analytics_overview(
         "total_wallets": len(unique_wallets),
         "total_contracts": len(unique_contracts),
         "total_amount": total_amount,
+        "total_gas_spent": total_gas_spent,
         "active_chains": active_chains,
         "top_wallets": top_wallets[:10],  # Top 10 wallets
         "top_contracts": top_contracts[:10],  # Top 10 contracts
@@ -992,6 +1033,7 @@ async def web3_wallet_analytics(
             "wallet_address": wallet_address,
             "total_interactions": 0,
             "total_amount": 0,
+            "total_gas_spent": 0,
             "unique_contracts": [],
             "chains_used": [],
             "interaction_history": [],
@@ -1007,6 +1049,7 @@ async def web3_wallet_analytics(
     unique_contracts = set()
     chains_used = set()
     total_amount = 0
+    total_gas_spent = 0
     contract_interactions = {}
     chain_interactions = {}
     interaction_history = []
@@ -1021,11 +1064,13 @@ async def web3_wallet_analytics(
         chains_used.add(event.chain_id)
         chain_interactions[event.chain_id] = chain_interactions.get(event.chain_id, 0) + 1
         
-        # Extract amount from properties
+        # Extract amount and gas from properties
         event_amount = 0
+        event_gas = 0
+        
         if event.properties:
             # Common amount field names in Web3 events
-            amount_fields = ['amount', 'value', 'token_amount', 'eth_amount', 'usd_value']
+            amount_fields = ['amount', 'value', 'token_amount', 'eth_amount', 'usd_value', 'transaction_value']
             for field in amount_fields:
                 if field in event.properties:
                     try:
@@ -1033,8 +1078,29 @@ async def web3_wallet_analytics(
                         break
                     except (ValueError, TypeError):
                         continue
+            
+            # Extract gas information
+            gas_fields = ['gas_fee', 'gas_fee_usd', 'gas_cost', 'gas_cost_usd', 'transaction_fee', 'fee_usd']
+            for field in gas_fields:
+                if field in event.properties:
+                    try:
+                        event_gas = float(event.properties[field])
+                        break
+                    except (ValueError, TypeError):
+                        continue
+            
+            # If no direct gas field, try to calculate from gas_used and gas_price
+            if event_gas == 0 and 'gas_used' in event.properties and 'gas_price' in event.properties:
+                try:
+                    gas_used = float(event.properties['gas_used'])
+                    gas_price = float(event.properties['gas_price'])
+                    # Convert from wei to ETH (gas_price is typically in wei)
+                    event_gas = (gas_used * gas_price) / 1e18
+                except (ValueError, TypeError):
+                    pass
         
         total_amount += event_amount
+        total_gas_spent += event_gas
         
         # Build interaction history
         interaction_history.append({
@@ -1043,6 +1109,7 @@ async def web3_wallet_analytics(
             "chain_id": event.chain_id,
             "event_name": event.event_name,
             "amount": event_amount,
+            "gas_spent": event_gas,
             "timestamp": event.timestamp.isoformat(),
             "properties": event.properties or {}
         })
@@ -1077,6 +1144,7 @@ async def web3_wallet_analytics(
         "wallet_address": wallet_address,
         "total_interactions": len(wallet_events),
         "total_amount": total_amount,
+        "total_gas_spent": total_gas_spent,
         "unique_contracts": list(unique_contracts),
         "chains_used": list(chains_used),
         "interaction_history": interaction_history[:100],  # Limit to 100 most recent
@@ -1086,7 +1154,8 @@ async def web3_wallet_analytics(
             "last_interaction": max(e.timestamp for e in wallet_events).isoformat(),
             "most_active_contract": most_active_contract,
             "most_active_chain": most_active_chain,
-            "avg_amount_per_interaction": round(total_amount / len(wallet_events), 4) if wallet_events else 0
+            "avg_amount_per_interaction": round(total_amount / len(wallet_events), 4) if wallet_events else 0,
+            "avg_gas_per_interaction": round(total_gas_spent / len(wallet_events), 4) if wallet_events else 0
         }
     }
 

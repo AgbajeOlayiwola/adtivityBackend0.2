@@ -156,14 +156,14 @@ class BlockchainExplorerService:
                 response.raise_for_status()
                 
                 data = response.json()
-                return self._process_helius_solana_transactions(data, wallet_address)
+                return await self._process_helius_solana_transactions(data, wallet_address)
                 
         except Exception as e:
             logger.error(f"Failed to fetch Helius Solana transactions: {e}")
             return []
     
     
-    def _process_helius_solana_transactions(self, data: Dict[str, Any], wallet_address: str) -> List[Dict[str, Any]]:
+    async def _process_helius_solana_transactions(self, data: Dict[str, Any], wallet_address: str) -> List[Dict[str, Any]]:
         """Process Helius Solana transaction data."""
         processed_transactions = []
         
@@ -239,6 +239,12 @@ class BlockchainExplorerService:
                     else:
                         tx_timestamp = datetime.now(timezone.utc)
                     
+                    # Calculate USD values properly
+                    sol_price_usd = await self._get_sol_price()
+                    amount_usd = float(amount) * sol_price_usd if amount else 0
+                    gas_fee_sol = fee / 1e9  # Convert lamports to SOL
+                    gas_fee_usd = gas_fee_sol * sol_price_usd
+                    
                     processed_tx = {
                         'transaction_hash': signature,
                         'block_number': slot,
@@ -246,8 +252,8 @@ class BlockchainExplorerService:
                         'to_address': wallet_address,
                         'value': amount,
                         'gas_used': fee,
-                        'gas_price': float(f"{(fee / 1e9):.9f}"),  # Convert lamports to SOL for gas price
-                        'gas_fee_usd': round((fee / 1e9) * 100, 6),  # Convert to SOL and multiply by price
+                        'gas_price': gas_fee_sol,  # Gas price in SOL
+                        'gas_fee_usd': round(gas_fee_usd, 6),
                         'timestamp': tx_timestamp,
                         'status': 'confirmed' if success else 'failed',
                         'transaction_type': tx_type,
@@ -256,7 +262,7 @@ class BlockchainExplorerService:
                         'token_symbol': token_symbol,
                         'token_name': token_name,
                         'amount': amount,
-                        'amount_usd': round(float(amount) * 100, 2),  # Basic SOL price estimate ($100 per SOL)
+                        'amount_usd': round(amount_usd, 2),
                         'transaction_metadata': {
                             'helius_data': tx,
                             'slot': slot,
@@ -265,7 +271,8 @@ class BlockchainExplorerService:
                             'token_transfers': token_transfers,
                             'nft_transfers': nft_transfers,
                             'instructions': tx.get('instructions', []),
-                            'events': tx.get('events', [])
+                            'events': tx.get('events', []),
+                            'sol_price_usd': sol_price_usd
                         }
                     }
                     processed_transactions.append(processed_tx)
@@ -638,7 +645,7 @@ class BlockchainExplorerService:
             # Process and normalize transaction data
             processed_transactions = []
             for tx in transactions:
-                processed_tx = self._process_etherscan_transaction(tx)
+                processed_tx = await self._process_etherscan_transaction(tx)
                 if processed_tx:
                     processed_transactions.append(processed_tx)
             
@@ -729,7 +736,7 @@ class BlockchainExplorerService:
                 # Process the unified history data
                 processed_transactions = []
                 for item in data.get('result', []):
-                    processed_tx = self._process_moralis_history_item(item, network)
+                    processed_tx = await self._process_moralis_history_item(item, network)
                     if processed_tx:
                         processed_transactions.append(processed_tx)
                 
@@ -765,17 +772,34 @@ class BlockchainExplorerService:
             wallet_address, 'ethereum', start_block, end_block, limit
         )
     
-    def _process_etherscan_transaction(self, tx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    async def _process_etherscan_transaction(self, tx: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Process and normalize Etherscan transaction data."""
         try:
+            # Calculate values properly
+            value_wei = int(tx.get('value', 0))
+            value_eth = Decimal(value_wei) / Decimal(10**18)
+            
+            gas_used = int(tx.get('gasUsed', 0))
+            gas_price_wei = int(tx.get('gasPrice', 0))
+            gas_fee_wei = gas_used * gas_price_wei
+            gas_fee_eth = Decimal(gas_fee_wei) / Decimal(10**18)
+            
+            # Get ETH price for USD conversion
+            eth_price_usd = await self._get_eth_price()
+            amount_usd = float(value_eth) * eth_price_usd
+            gas_fee_usd = float(gas_fee_eth) * eth_price_usd
+            
             return {
                 'transaction_hash': tx.get('hash', ''),
                 'block_number': int(tx.get('blockNumber', 0)),
                 'from_address': tx.get('from', ''),
                 'to_address': tx.get('to', ''),
-                'value': Decimal(tx.get('value', 0)) / Decimal(10**18),  # Convert from wei to ETH
-                'gas_used': int(tx.get('gasUsed', 0)),
-                'gas_price': int(tx.get('gasPrice', 0)),
+                'value': value_eth,
+                'amount': value_eth,
+                'amount_usd': round(amount_usd, 2),
+                'gas_used': gas_used,
+                'gas_price': gas_price_wei,
+                'gas_fee_usd': round(gas_fee_usd, 2),
                 'timestamp': datetime.fromtimestamp(int(tx.get('timeStamp', 0))),
                 'status': 'confirmed' if tx.get('isError') == '0' else 'failed',
                 'transaction_type': self._determine_transaction_type(tx),
@@ -787,7 +811,8 @@ class BlockchainExplorerService:
                     'contract_address': tx.get('contractAddress', ''),
                     'input': tx.get('input', ''),
                     'nonce': tx.get('nonce', ''),
-                    'transaction_index': tx.get('transactionIndex', '')
+                    'transaction_index': tx.get('transactionIndex', ''),
+                    'eth_price_usd': eth_price_usd
                 }
             }
         except Exception as e:
@@ -820,17 +845,34 @@ class BlockchainExplorerService:
             logger.error(f"Error processing Alchemy transfer: {e}")
             return None
     
-    def _process_moralis_transaction(self, tx: Dict[str, Any], network: str = 'ethereum') -> Optional[Dict[str, Any]]:
+    async def _process_moralis_transaction(self, tx: Dict[str, Any], network: str = 'ethereum') -> Optional[Dict[str, Any]]:
         """Process and normalize Moralis transaction data."""
         try:
+            # Calculate values properly
+            value_wei = int(tx.get('value', 0))
+            value_eth = Decimal(value_wei) / Decimal(10**18)
+            
+            gas_used = int(tx.get('gas', 0))
+            gas_price_wei = int(tx.get('gas_price', 0))
+            gas_fee_wei = gas_used * gas_price_wei
+            gas_fee_eth = Decimal(gas_fee_wei) / Decimal(10**18)
+            
+            # Get token price for USD conversion
+            token_price_usd = await self._get_token_price(network)
+            amount_usd = float(value_eth) * token_price_usd
+            gas_fee_usd = float(gas_fee_eth) * token_price_usd
+            
             return {
                 'transaction_hash': tx.get('hash', ''),
                 'block_number': int(tx.get('block_number', 0)),
                 'from_address': tx.get('from_address', ''),
                 'to_address': tx.get('to_address', ''),
-                'value': Decimal(tx.get('value', 0)) / Decimal(10**18),
-                'gas_used': int(tx.get('gas', 0)),
-                'gas_price': int(tx.get('gas_price', 0)),
+                'value': value_eth,
+                'amount': value_eth,
+                'amount_usd': round(amount_usd, 2),
+                'gas_used': gas_used,
+                'gas_price': gas_price_wei,
+                'gas_fee_usd': round(gas_fee_usd, 2),
                 'timestamp': datetime.fromisoformat(tx.get('block_timestamp', '').replace('Z', '+00:00')),
                 'status': 'confirmed',
                 'transaction_type': self._determine_transaction_type(tx),
@@ -839,7 +881,8 @@ class BlockchainExplorerService:
                     'moralis_data': tx,
                     'receipt_status': tx.get('receipt_status', ''),
                     'method': tx.get('method', ''),
-                    'input': tx.get('input', '')
+                    'input': tx.get('input', ''),
+                    'token_price_usd': token_price_usd
                 }
             }
         except Exception as e:
@@ -873,7 +916,7 @@ class BlockchainExplorerService:
             logger.error(f"Error processing Moralis token transfer: {e}")
             return None
     
-    def _process_moralis_history_item(self, item: Dict[str, Any], network: str = 'ethereum') -> Optional[Dict[str, Any]]:
+    async def _process_moralis_history_item(self, item: Dict[str, Any], network: str = 'ethereum') -> Optional[Dict[str, Any]]:
         """Process and normalize Moralis unified history item."""
         try:
             # Determine transaction type based on the item
@@ -893,15 +936,32 @@ class BlockchainExplorerService:
             else:
                 timestamp_dt = datetime.utcnow()
             
+            # Calculate values properly
+            value_wei = int(item.get('value', 0))
+            value_eth = Decimal(value_wei) / Decimal(10**18)
+            
+            gas_used = int(item.get('receipt_gas_used', 0))
+            gas_price_wei = int(item.get('gas_price', 0))
+            gas_fee_wei = gas_used * gas_price_wei
+            gas_fee_eth = Decimal(gas_fee_wei) / Decimal(10**18)
+            
+            # Get token price for USD conversion
+            token_price_usd = await self._get_token_price(network)
+            amount_usd = float(value_eth) * token_price_usd
+            gas_fee_usd = float(gas_fee_eth) * token_price_usd
+            
             # Build base transaction data
             processed_tx = {
                 'transaction_hash': transaction_hash,
                 'block_number': block_number,
                 'from_address': item.get('from_address', ''),
                 'to_address': item.get('to_address', ''),
-                'value': Decimal(item.get('value', 0)) / Decimal(10**18),
-                'gas_used': int(item.get('receipt_gas_used', 0)),
-                'gas_price': int(item.get('gas_price', 0)),
+                'value': value_eth,
+                'amount': value_eth,
+                'amount_usd': round(amount_usd, 2),
+                'gas_used': gas_used,
+                'gas_price': gas_price_wei,
+                'gas_fee_usd': round(gas_fee_usd, 2),
                 'timestamp': timestamp_dt,
                 'status': 'confirmed' if item.get('receipt_status') == '1' else 'failed',
                 'transaction_type': transaction_type,
@@ -915,7 +975,8 @@ class BlockchainExplorerService:
                     'transaction_fee': item.get('transaction_fee', ''),
                     'nft_transfers': item.get('nft_transfers', []),
                     'erc20_transfers': item.get('erc20_transfers', []),
-                    'native_transfers': item.get('native_transfers', [])
+                    'native_transfers': item.get('native_transfers', []),
+                    'token_price_usd': token_price_usd
                 }
             }
             
@@ -1072,6 +1133,21 @@ class BlockchainExplorerService:
             
         # Default to Ethereum for now
         return 'ethereum'
+    
+    async def _get_eth_price(self) -> float:
+        """Get current ETH price in USD."""
+        from .price_service import price_service
+        return await price_service.get_eth_price()
+    
+    async def _get_sol_price(self) -> float:
+        """Get current SOL price in USD."""
+        from .price_service import price_service
+        return await price_service.get_sol_price()
+    
+    async def _get_token_price(self, network: str) -> float:
+        """Get current token price in USD for the given network."""
+        from .price_service import price_service
+        return await price_service.get_token_price(network)
 
 
 # Create global instance
