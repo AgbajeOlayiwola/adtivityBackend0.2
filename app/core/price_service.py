@@ -230,3 +230,4 @@ class PriceService:
 
 # Global price service instance
 price_service = PriceService()
+
