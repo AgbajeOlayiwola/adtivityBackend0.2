@@ -161,6 +161,8 @@ class WalletActivityFetcher:
                     token_name=tx.get('token_name'),
                     amount=tx.get('value', 0),
                     amount_usd=tx.get('amount_usd'),  # Would need price data
+                    inflow_usd=tx.get('inflow_usd'),
+                    outflow_usd=tx.get('outflow_usd'),
                     gas_used=tx.get('gas_used'),
                     gas_price=tx.get('gas_price'),
                     gas_fee_usd=tx.get('gas_fee_usd'),  # Would need price data

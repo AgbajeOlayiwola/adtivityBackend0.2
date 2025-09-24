@@ -1287,6 +1287,8 @@ class WalletActivityBase(BaseModel):
     token_name: Optional[str] = None
     amount: Optional[Decimal] = None
     amount_usd: Optional[Decimal] = None
+    inflow_usd: Optional[Decimal] = None
+    outflow_usd: Optional[Decimal] = None
     gas_used: Optional[int] = None
     gas_price: Optional[Decimal] = None
     gas_fee_usd: Optional[Decimal] = None

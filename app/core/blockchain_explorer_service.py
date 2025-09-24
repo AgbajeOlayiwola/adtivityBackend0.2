@@ -279,6 +279,25 @@ class BlockchainExplorerService:
                     gas_fee_sol = fee / 1e9  # Convert lamports to SOL
                     gas_fee_usd = gas_fee_sol * sol_price_usd
                     
+                    # Calculate inflow and outflow based on wallet direction
+                    # If wallet is the 'to_address', it's inflow (money coming in)
+                    # If wallet is the 'from_address', it's outflow (money going out)
+                    from_address = from_address if 'from_address' in locals() else wallet_address
+                    to_address = to_address if 'to_address' in locals() else wallet_address
+                    
+                    if to_address == wallet_address and from_address != wallet_address:
+                        # Money coming TO the wallet = inflow
+                        inflow_usd = round(amount_usd, 2)
+                        outflow_usd = 0.0
+                    elif from_address == wallet_address and to_address != wallet_address:
+                        # Money going FROM the wallet = outflow
+                        inflow_usd = 0.0
+                        outflow_usd = round(amount_usd, 2)
+                    else:
+                        # Same wallet or unclear direction
+                        inflow_usd = 0.0
+                        outflow_usd = 0.0
+                    
                     processed_tx = {
                         'transaction_hash': signature,
                         'block_number': slot,
@@ -297,6 +316,8 @@ class BlockchainExplorerService:
                         'token_name': token_name,
                         'amount': amount,
                         'amount_usd': round(amount_usd, 2),
+                        'inflow_usd': inflow_usd,
+                        'outflow_usd': outflow_usd,
                         'transaction_metadata': {
                             'helius_data': tx,
                             'slot': slot,
