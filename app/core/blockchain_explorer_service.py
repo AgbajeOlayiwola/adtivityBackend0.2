@@ -212,14 +212,43 @@ class BlockchainExplorerService:
                     # Check for token transfers
                     token_transfers = tx.get('tokenTransfers', [])
                     if token_transfers:
-                        tx_type = 'token_transfer'
+                        # Process each token transfer
                         for transfer in token_transfers:
-                            if transfer.get('fromUserAccount') == wallet_address:
-                                amount = abs(transfer.get('tokenAmount', 0))
-                                token_symbol = transfer.get('mint', 'UNKNOWN')
-                            elif transfer.get('toUserAccount') == wallet_address:
-                                amount = abs(transfer.get('tokenAmount', 0))
-                                token_symbol = transfer.get('mint', 'UNKNOWN')
+                            from_account = transfer.get('fromUserAccount', '')
+                            to_account = transfer.get('toUserAccount', '')
+                            token_amount = abs(transfer.get('tokenAmount', 0))
+                            mint = transfer.get('mint', '')
+                            
+                            # Check if this is a USDC transfer (EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v)
+                            if mint == 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v':
+                                # This is a USDC transfer - treat as regular transfer, not token_transfer
+                                tx_type = 'transfer'
+                                amount = token_amount
+                                token_symbol = 'USDC'
+                                
+                                # Set proper from and to addresses
+                                if from_account == wallet_address:
+                                    from_address = wallet_address
+                                    to_address = to_account
+                                elif to_account == wallet_address:
+                                    from_address = from_account
+                                    to_address = wallet_address
+                                else:
+                                    from_address = from_account
+                                    to_address = to_account
+                                
+                                # Calculate USD value using USDC price (1:1 for USDC)
+                                amount_usd = token_amount
+                                break
+                            else:
+                                # Other token transfers
+                                tx_type = 'token_transfer'
+                                if from_account == wallet_address:
+                                    amount = token_amount
+                                    token_symbol = mint[:8] + '...'  # Truncate long mint addresses
+                                elif to_account == wallet_address:
+                                    amount = token_amount
+                                    token_symbol = mint[:8] + '...'
                     
                     # Check for NFT transfers
                     nft_transfers = tx.get('nftTransfers', [])
@@ -241,15 +270,20 @@ class BlockchainExplorerService:
                     
                     # Calculate USD values properly
                     sol_price_usd = await self._get_sol_price()
-                    amount_usd = float(amount) * sol_price_usd if amount else 0
+                    if token_symbol == 'USDC':
+                        # USDC is 1:1 with USD
+                        amount_usd = float(amount)
+                    else:
+                        amount_usd = float(amount) * sol_price_usd if amount else 0
+                    
                     gas_fee_sol = fee / 1e9  # Convert lamports to SOL
                     gas_fee_usd = gas_fee_sol * sol_price_usd
                     
                     processed_tx = {
                         'transaction_hash': signature,
                         'block_number': slot,
-                        'from_address': wallet_address,
-                        'to_address': wallet_address,
+                        'from_address': from_address if 'from_address' in locals() else wallet_address,
+                        'to_address': to_address if 'to_address' in locals() else wallet_address,
                         'value': amount,
                         'gas_used': fee,
                         'gas_price': gas_fee_sol,  # Gas price in SOL
@@ -378,8 +412,8 @@ class BlockchainExplorerService:
                 processed_tx = {
                     'transaction_hash': signature,
                     'block_number': slot,
-                    'from_address': wallet_address,
-                    'to_address': wallet_address,
+                    'from_address': from_address if 'from_address' in locals() else wallet_address,
+                    'to_address': to_address if 'to_address' in locals() else wallet_address,
                     'value': amount,
                     'gas_used': fee,
                     'gas_price': 0,  # Solana doesn't use gas price
@@ -387,9 +421,9 @@ class BlockchainExplorerService:
                     'status': 'confirmed' if not meta.get('err') else 'failed',
                     'transaction_type': tx_type,
                     'network': 'solana',
-                    'token_address': '',
-                    'token_symbol': 'SOL',
-                    'token_name': 'Solana',
+                    'token_address': mint if 'mint' in locals() else '',
+                    'token_symbol': token_symbol if 'token_symbol' in locals() else 'SOL',
+                    'token_name': 'USDC' if token_symbol == 'USDC' else 'Solana',
                     'amount': amount,
                     'amount_usd': amount_usd,
                     'transaction_metadata': {
