@@ -740,6 +740,8 @@ async def web3_analytics_overview(
                 "total_contracts": 0,
                 "total_amount": 0,
                 "total_gas_spent": 0,
+                "total_inflow": 0,
+                "total_outflow": 0,
                 "active_chains": [],
                 "top_wallets": [],
                 "top_contracts": [],
@@ -781,6 +783,8 @@ async def web3_analytics_overview(
             "total_contracts": 0,
             "total_amount": 0,
             "total_gas_spent": 0,
+            "total_inflow": 0,
+            "total_outflow": 0,
             "active_chains": [],
             "top_wallets": [],
             "top_contracts": [],
@@ -799,6 +803,8 @@ async def web3_analytics_overview(
     unique_chains = set()
     total_amount = 0
     total_gas_spent = 0
+    total_inflow = 0
+    total_outflow = 0
     wallet_activity = {}
     contract_activity = {}
     chain_activity = {}
@@ -824,10 +830,14 @@ async def web3_analytics_overview(
         # Use real USD values from wallet activities
         event_amount = float(activity.amount_usd or 0)
         event_gas = float(activity.gas_fee_usd or 0)
+        event_inflow = float(activity.inflow_usd or 0)
+        event_outflow = float(activity.outflow_usd or 0)
         
         # Add to totals
         total_amount += event_amount
         total_gas_spent += event_gas
+        total_inflow += event_inflow
+        total_outflow += event_outflow
         
         # Add to wallet activity tracking
         wallet_addr = activity.from_address or activity.to_address
@@ -838,6 +848,8 @@ async def web3_analytics_overview(
                     "interaction_count": 0,
                     "total_amount": 0,
                     "total_gas_spent": 0,
+                    "total_inflow": 0,
+                    "total_outflow": 0,
                     "contracts_interacted": set(),
                     "chains_used": set()
                 }
@@ -845,6 +857,8 @@ async def web3_analytics_overview(
             wallet_activity[wallet_addr]["interaction_count"] += 1
             wallet_activity[wallet_addr]["total_amount"] += event_amount
             wallet_activity[wallet_addr]["total_gas_spent"] += event_gas
+            wallet_activity[wallet_addr]["total_inflow"] += event_inflow
+            wallet_activity[wallet_addr]["total_outflow"] += event_outflow
             if activity.token_address:
                 wallet_activity[wallet_addr]["contracts_interacted"].add(activity.token_address)
             wallet_activity[wallet_addr]["chains_used"].add(activity.network)
@@ -857,6 +871,8 @@ async def web3_analytics_overview(
                     "interaction_count": 0,
                     "total_amount": 0,
                     "total_gas_spent": 0,
+                    "total_inflow": 0,
+                    "total_outflow": 0,
                     "unique_wallets": set(),
                     "chains_used": set()
                 }
@@ -864,6 +880,8 @@ async def web3_analytics_overview(
             contract_activity[activity.token_address]["interaction_count"] += 1
             contract_activity[activity.token_address]["total_amount"] += event_amount
             contract_activity[activity.token_address]["total_gas_spent"] += event_gas
+            contract_activity[activity.token_address]["total_inflow"] += event_inflow
+            contract_activity[activity.token_address]["total_outflow"] += event_outflow
             if wallet_addr:
                 contract_activity[activity.token_address]["unique_wallets"].add(wallet_addr)
             contract_activity[activity.token_address]["chains_used"].add(activity.network)
@@ -876,6 +894,8 @@ async def web3_analytics_overview(
                     "interaction_count": 0,
                     "total_amount": 0,
                     "total_gas_spent": 0,
+                    "total_inflow": 0,
+                    "total_outflow": 0,
                     "unique_wallets": set(),
                     "unique_contracts": set()
                 }
@@ -883,6 +903,8 @@ async def web3_analytics_overview(
             chain_activity[activity.network]["interaction_count"] += 1
             chain_activity[activity.network]["total_amount"] += event_amount
             chain_activity[activity.network]["total_gas_spent"] += event_gas
+            chain_activity[activity.network]["total_inflow"] += event_inflow
+            chain_activity[activity.network]["total_outflow"] += event_outflow
             if wallet_addr:
                 chain_activity[activity.network]["unique_wallets"].add(wallet_addr)
             if activity.token_address:
@@ -1029,6 +1051,8 @@ async def web3_analytics_overview(
             "interaction_count": data["interaction_count"],
             "total_amount": data["total_amount"],
             "total_gas_spent": data["total_gas_spent"],
+            "total_inflow": data["total_inflow"],
+            "total_outflow": data["total_outflow"],
             "contracts_interacted": len(data["contracts_interacted"]),
             "chains_used": len(data["chains_used"])
         })
@@ -1042,6 +1066,8 @@ async def web3_analytics_overview(
             "interaction_count": data["interaction_count"],
             "total_amount": data["total_amount"],
             "total_gas_spent": data["total_gas_spent"],
+            "total_inflow": data["total_inflow"],
+            "total_outflow": data["total_outflow"],
             "unique_wallets": len(data["unique_wallets"]),
             "chains_used": len(data["chains_used"])
         })
@@ -1055,6 +1081,8 @@ async def web3_analytics_overview(
             "interaction_count": data["interaction_count"],
             "total_amount": data["total_amount"],
             "total_gas_spent": data["total_gas_spent"],
+            "total_inflow": data["total_inflow"],
+            "total_outflow": data["total_outflow"],
             "unique_wallets": len(data["unique_wallets"]),
             "unique_contracts": len(data["unique_contracts"])
         })
@@ -1079,6 +1107,8 @@ async def web3_analytics_overview(
         "total_contracts": len(unique_contracts),
         "total_amount": total_amount,
         "total_gas_spent": total_gas_spent,
+        "total_inflow": total_inflow,
+        "total_outflow": total_outflow,
         "active_chains": active_chains,
         "top_wallets": top_wallets[:10],  # Top 10 wallets
         "top_contracts": top_contracts[:10],  # Top 10 contracts
