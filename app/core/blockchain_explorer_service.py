@@ -212,7 +212,22 @@ class BlockchainExplorerService:
                     # Check for token transfers
                     token_transfers = tx.get('tokenTransfers', [])
                     if token_transfers:
-                        # Process each token transfer
+                        # Check if this transaction contains only non-USDC token transfers
+                        has_usdc_transfer = False
+                        has_other_token_transfer = False
+                        
+                        for transfer in token_transfers:
+                            mint = transfer.get('mint', '')
+                            if mint == 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v':
+                                has_usdc_transfer = True
+                            else:
+                                has_other_token_transfer = True
+                        
+                        # If transaction has only non-USDC token transfers, skip it entirely
+                        if has_other_token_transfer and not has_usdc_transfer:
+                            continue  # Skip this entire transaction
+                        
+                        # Process each token transfer (only USDC transfers will reach here)
                         for transfer in token_transfers:
                             from_account = transfer.get('fromUserAccount', '')
                             to_account = transfer.get('toUserAccount', '')
@@ -240,15 +255,6 @@ class BlockchainExplorerService:
                                 # Calculate USD value using USDC price (1:1 for USDC)
                                 amount_usd = token_amount
                                 break
-                            else:
-                                # Other token transfers
-                                tx_type = 'token_transfer'
-                                if from_account == wallet_address:
-                                    amount = token_amount
-                                    token_symbol = mint[:8] + '...'  # Truncate long mint addresses
-                                elif to_account == wallet_address:
-                                    amount = token_amount
-                                    token_symbol = mint[:8] + '...'
                     
                     # Check for NFT transfers
                     nft_transfers = tx.get('nftTransfers', [])
