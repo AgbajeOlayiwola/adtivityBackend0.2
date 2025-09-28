@@ -740,6 +740,9 @@ async def web3_analytics_overview(
                 "total_contracts": 0,
                 "total_amount": 0,
                 "total_gas_spent": 0,
+                "total_inflow": 0,
+                "total_outflow": 0,
+                "net_balance": 0,
                 "active_chains": [],
                 "top_wallets": [],
                 "top_contracts": [],
@@ -781,6 +784,9 @@ async def web3_analytics_overview(
             "total_contracts": 0,
             "total_amount": 0,
             "total_gas_spent": 0,
+            "total_inflow": 0,
+            "total_outflow": 0,
+            "net_balance": 0,
             "active_chains": [],
             "top_wallets": [],
             "top_contracts": [],
@@ -799,6 +805,8 @@ async def web3_analytics_overview(
     unique_chains = set()
     total_amount = 0
     total_gas_spent = 0
+    total_inflow = 0
+    total_outflow = 0
     wallet_activity = {}
     contract_activity = {}
     chain_activity = {}
@@ -828,6 +836,12 @@ async def web3_analytics_overview(
         # Add to totals
         total_amount += event_amount
         total_gas_spent += event_gas
+        
+        # Add to inflow/outflow totals for balance calculation
+        if hasattr(activity, 'inflow_usd') and activity.inflow_usd:
+            total_inflow += float(activity.inflow_usd)
+        if hasattr(activity, 'outflow_usd') and activity.outflow_usd:
+            total_outflow += float(activity.outflow_usd)
         
         # Add to wallet activity tracking
         wallet_addr = activity.from_address or activity.to_address
@@ -1073,12 +1087,22 @@ async def web3_analytics_overview(
     current_events = len(web3_events)
     growth_rate = ((current_events - previous_events) / previous_events * 100) if previous_events > 0 else 0
     
+    # Calculate net balance from transaction history (for reference)
+    net_balance = total_inflow - total_outflow
+    
+    # Note: For accurate balance, use the real-time balance endpoint:
+    # GET /dashboard/analytics/web3/wallet/{wallet_address}/balance
+    
     return {
         "total_events": current_events,
         "total_wallets": len(unique_wallets),
         "total_contracts": len(unique_contracts),
         "total_amount": total_amount,
         "total_gas_spent": total_gas_spent,
+        "total_inflow": round(total_inflow, 2),
+        "total_outflow": round(total_outflow, 2),
+        "net_balance": round(net_balance, 2),
+        "note": "For accurate real-time balance, use /dashboard/analytics/web3/wallet/{address}/balance",
         "active_chains": active_chains,
         "top_wallets": top_wallets[:10],  # Top 10 wallets
         "top_contracts": top_contracts[:10],  # Top 10 contracts
@@ -1149,6 +1173,9 @@ async def web3_wallet_analytics(
             "total_interactions": 0,
             "total_amount": 0,
             "total_gas_spent": 0,
+            "total_inflow": 0,
+            "total_outflow": 0,
+            "net_balance": 0,
             "unique_contracts": [],
             "chains_used": [],
             "interaction_history": [],
@@ -1165,6 +1192,8 @@ async def web3_wallet_analytics(
     chains_used = set()
     total_amount = 0
     total_gas_spent = 0
+    total_inflow = 0
+    total_outflow = 0
     contract_interactions = {}
     chain_interactions = {}
     interaction_history = []
@@ -1191,6 +1220,12 @@ async def web3_wallet_analytics(
         # Add to totals
         total_amount += event_amount
         total_gas_spent += event_gas
+        
+        # Add to inflow/outflow totals for balance calculation
+        if hasattr(activity, 'inflow_usd') and activity.inflow_usd:
+            total_inflow += float(activity.inflow_usd)
+        if hasattr(activity, 'outflow_usd') and activity.outflow_usd:
+            total_outflow += float(activity.outflow_usd)
         
         # Add to interaction history
         interaction_history.append({
@@ -1290,11 +1325,17 @@ async def web3_wallet_analytics(
     # Sort by interaction count
     contract_details.sort(key=lambda x: x["interaction_count"], reverse=True)
     
+    # Calculate net balance
+    net_balance = total_inflow - total_outflow
+    
     return {
         "wallet_address": wallet_address,
         "total_interactions": len(wallet_events),
         "total_amount": total_amount,
         "total_gas_spent": total_gas_spent,
+        "total_inflow": round(total_inflow, 2),
+        "total_outflow": round(total_outflow, 2),
+        "net_balance": round(net_balance, 2),
         "unique_contracts": list(unique_contracts),
         "chains_used": list(chains_used),
         "interaction_history": interaction_history[:100],  # Limit to 100 most recent
@@ -1308,6 +1349,41 @@ async def web3_wallet_analytics(
             "avg_gas_per_interaction": round(total_gas_spent / len(wallet_events), 4) if wallet_events else 0
         }
     }
+
+
+@router.get("/analytics/web3/wallet/{wallet_address}/balance")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@log_sensitive_operations("web3_wallet_balance")
+async def get_wallet_balance(
+    wallet_address: str = Path(..., description="Wallet address to get balance for"),
+    network: str = Query("solana", description="Blockchain network"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Get real-time wallet balance from blockchain explorer."""
+    try:
+        from ..core.blockchain_explorer_service import BlockchainExplorerService
+        
+        explorer_service = BlockchainExplorerService()
+        balance_data = await explorer_service.get_wallet_balance(wallet_address, network)
+        
+        return {
+            "wallet_address": wallet_address,
+            "network": network,
+            "success": balance_data.get("success", False),
+            "balance": balance_data.get("balance", 0),
+            "balance_usd": balance_data.get("balance_usd", 0),
+            "total_value_usd": balance_data.get("total_value_usd", 0),
+            "tokens": balance_data.get("tokens", []),
+            "error": balance_data.get("error"),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error fetching wallet balance: {str(e)}"
+        )
 
 
 @router.get("/analytics/web3/contract/{contract_address}")

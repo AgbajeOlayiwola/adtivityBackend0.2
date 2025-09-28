@@ -1161,8 +1161,240 @@ class BlockchainExplorerService:
     
     async def get_wallet_balance(self, wallet_address: str, network: str = "ethereum") -> Dict[str, Any]:
         """Get wallet balance and token holdings."""
-        # This would fetch current balance and token holdings
-        pass
+        try:
+            if network.lower() == "solana":
+                return await self._get_solana_balance(wallet_address)
+            else:
+                return await self._get_evm_balance(wallet_address, network)
+        except Exception as e:
+            logger.error(f"Error fetching wallet balance: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "balance": 0,
+                "balance_usd": 0,
+                "tokens": []
+            }
+    
+    async def _get_solana_balance(self, wallet_address: str) -> Dict[str, Any]:
+        """Get Solana wallet balance using Helius API."""
+        try:
+            from .config import settings
+            helius_api_key = settings.HELIUS_API_KEY
+            
+            if not helius_api_key:
+                return {
+                    "success": False,
+                    "error": "Helius API key not configured",
+                    "balance": 0,
+                    "balance_usd": 0,
+                    "tokens": []
+                }
+            
+            # Get account info and token accounts
+            async with httpx.AsyncClient() as client:
+                # Get native SOL balance
+                sol_balance_url = f"https://api.helius.xyz/v0/addresses/{wallet_address}/balances?api-key={helius_api_key}"
+                response = await client.get(sol_balance_url)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    
+                    # Extract native SOL balance
+                    native_balance = data.get('nativeBalance', 0)
+                    sol_balance = native_balance / 1e9  # Convert lamports to SOL
+                    
+                    # Get SOL price for USD conversion
+                    sol_price = await self._get_sol_price()
+                    sol_balance_usd = sol_balance * sol_price
+                    
+                    # Get token balances
+                    tokens = data.get('tokens', [])
+                    token_balances = []
+                    total_token_value = 0
+                    
+                    for token in tokens:
+                        token_amount = float(token.get('amount', 0))
+                        token_decimals = token.get('decimals', 9)
+                        token_balance = token_amount / (10 ** token_decimals)
+                        
+                        # Get token price if available
+                        token_price = await self._get_token_price(token.get('mint', ''))
+                        token_value_usd = token_balance * token_price
+                        total_token_value += token_value_usd
+                        
+                        token_balances.append({
+                            'mint': token.get('mint', ''),
+                            'symbol': token.get('symbol', ''),
+                            'name': token.get('name', ''),
+                            'balance': token_balance,
+                            'balance_usd': token_value_usd,
+                            'decimals': token_decimals
+                        })
+                    
+                    total_balance_usd = sol_balance_usd + total_token_value
+                    
+                    return {
+                        "success": True,
+                        "balance": sol_balance,
+                        "balance_usd": sol_balance_usd,
+                        "tokens": token_balances,
+                        "total_value_usd": total_balance_usd,
+                        "network": "solana"
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Helius API error: {response.status_code}",
+                        "balance": 0,
+                        "balance_usd": 0,
+                        "tokens": []
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Error fetching Solana balance: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "balance": 0,
+                "balance_usd": 0,
+                "tokens": []
+            }
+    
+    async def _get_evm_balance(self, wallet_address: str, network: str) -> Dict[str, Any]:
+        """Get EVM wallet balance using Moralis API."""
+        try:
+            chain_id = self.chain_ids.get(network.lower())
+            if not chain_id:
+                return {
+                    "success": False,
+                    "error": f"Unsupported network: {network}",
+                    "balance": 0,
+                    "balance_usd": 0,
+                    "tokens": []
+                }
+            
+            async with httpx.AsyncClient() as client:
+                # Get native balance
+                balance_url = f"{self.moralis_base_urls.get(network.lower(), self.moralis_base_urls['ethereum'])}/{wallet_address}/balance"
+                headers = {
+                    "X-API-Key": self.moralis_api_key,
+                    "Content-Type": "application/json"
+                }
+                params = {"chain": chain_id}
+                
+                response = await client.get(balance_url, headers=headers, params=params)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    native_balance = float(data.get('balance', 0)) / 1e18  # Convert wei to ETH
+                    
+                    # Get token balances
+                    tokens_url = f"{self.moralis_base_urls.get(network.lower(), self.moralis_base_urls['ethereum'])}/{wallet_address}/erc20"
+                    tokens_response = await client.get(tokens_url, headers=headers, params=params)
+                    
+                    token_balances = []
+                    total_token_value = 0
+                    
+                    if tokens_response.status_code == 200:
+                        tokens_data = tokens_response.json()
+                        for token in tokens_data:
+                            token_balance = float(token.get('balance', 0))
+                            token_decimals = int(token.get('decimals', 18))
+                            token_balance_formatted = token_balance / (10 ** token_decimals)
+                            
+                            # Get token price
+                            token_price = await self._get_token_price(token.get('token_address', ''))
+                            token_value_usd = token_balance_formatted * token_price
+                            total_token_value += token_value_usd
+                            
+                            token_balances.append({
+                                'address': token.get('token_address', ''),
+                                'symbol': token.get('symbol', ''),
+                                'name': token.get('name', ''),
+                                'balance': token_balance_formatted,
+                                'balance_usd': token_value_usd,
+                                'decimals': token_decimals
+                            })
+                    
+                    # Get native token price
+                    native_price = await self._get_native_token_price(network)
+                    native_balance_usd = native_balance * native_price
+                    total_balance_usd = native_balance_usd + total_token_value
+                    
+                    return {
+                        "success": True,
+                        "balance": native_balance,
+                        "balance_usd": native_balance_usd,
+                        "tokens": token_balances,
+                        "total_value_usd": total_balance_usd,
+                        "network": network
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "error": f"Moralis API error: {response.status_code}",
+                        "balance": 0,
+                        "balance_usd": 0,
+                        "tokens": []
+                    }
+                    
+        except Exception as e:
+            logger.error(f"Error fetching EVM balance: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "balance": 0,
+                "balance_usd": 0,
+                "tokens": []
+            }
+    
+    async def _get_sol_price(self) -> float:
+        """Get SOL price in USD."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd")
+                if response.status_code == 200:
+                    data = response.json()
+                    return float(data.get('solana', {}).get('usd', 0))
+        except:
+            pass
+        return 0.0
+    
+    async def _get_token_price(self, token_address: str) -> float:
+        """Get token price in USD."""
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"https://api.coingecko.com/api/v3/simple/token_price/solana?contract_addresses={token_address}&vs_currencies=usd")
+                if response.status_code == 200:
+                    data = response.json()
+                    return float(data.get(token_address.lower(), {}).get('usd', 0))
+        except:
+            pass
+        return 0.0
+    
+    async def _get_native_token_price(self, network: str) -> float:
+        """Get native token price in USD."""
+        try:
+            token_ids = {
+                'ethereum': 'ethereum',
+                'polygon': 'matic-network',
+                'bsc': 'binancecoin',
+                'arbitrum': 'ethereum',
+                'optimism': 'ethereum',
+                'base': 'ethereum',
+                'avalanche': 'avalanche-2'
+            }
+            
+            token_id = token_ids.get(network.lower(), 'ethereum')
+            async with httpx.AsyncClient() as client:
+                response = await client.get(f"https://api.coingecko.com/api/v3/simple/price?ids={token_id}&vs_currencies=usd")
+                if response.status_code == 200:
+                    data = response.json()
+                    return float(data.get(token_id, {}).get('usd', 0))
+        except:
+            pass
+        return 0.0
     
     def get_supported_chains(self) -> List[str]:
         """Get list of supported blockchain networks."""
