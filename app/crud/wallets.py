@@ -234,25 +234,6 @@ class WalletActivityCRUD:
                 "last_transaction": None
             }
         
-        # Calculate analytics
-        total_transactions = len(activities)
-        
-        # Calculate volume as inflow + outflow (actual wallet activity)
-        total_volume_usd = Decimal('0')
-        for activity in activities:
-            from_address = (activity.from_address or '').lower()
-            to_address = (activity.to_address or '').lower()
-            amount_usd = activity.amount_usd or Decimal('0')
-            
-            if from_address == wallet_address and to_address != wallet_address:
-                # Outgoing transaction (wallet is sender)
-                total_volume_usd += amount_usd
-            elif to_address == wallet_address and from_address != wallet_address:
-                # Incoming transaction (wallet is receiver)
-                total_volume_usd += amount_usd
-            # Self-transactions are not counted in volume as they don't represent actual flow
-        
-        # Calculate inflow and outflow totals based on from/to addresses
         # Get wallet connection to determine wallet address
         wallet_connection = db.query(WalletConnection).filter(
             WalletConnection.id == wallet_connection_id
@@ -276,6 +257,12 @@ class WalletActivityCRUD:
             }
         
         wallet_address = wallet_connection.wallet_address.lower()
+        
+        # Calculate analytics
+        total_transactions = len(activities)
+        
+        # Calculate volume as inflow + outflow (actual wallet activity)
+        total_volume_usd = Decimal('0')
         total_inflow_usd = Decimal('0')
         total_outflow_usd = Decimal('0')
         
@@ -287,10 +274,12 @@ class WalletActivityCRUD:
             if from_address == wallet_address and to_address != wallet_address:
                 # Outgoing transaction (wallet is sender)
                 total_outflow_usd += amount_usd
+                total_volume_usd += amount_usd
             elif to_address == wallet_address and from_address != wallet_address:
                 # Incoming transaction (wallet is receiver)
                 total_inflow_usd += amount_usd
-            # Self-transactions (wallet to itself) are treated as neutral
+                total_volume_usd += amount_usd
+            # Self-transactions are not counted in volume as they don't represent actual flow
         
         net_flow_usd = total_inflow_usd - total_outflow_usd
         
