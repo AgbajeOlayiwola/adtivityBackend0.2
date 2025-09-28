@@ -151,9 +151,9 @@ class WalletActivityFetcher:
                 amount = tx.get('value', 0)
                 amount_usd = tx.get('amount_usd', 0)
                 
-                # Skip transactions with zero value (both native token and USD)
-                if (amount == 0 or amount is None) and (amount_usd == 0 or amount_usd is None):
-                    logger.debug(f"Skipping $0 transaction: {tx.get('transaction_hash', 'unknown')}")
+                # Skip transactions with zero USD value (regardless of native token amount)
+                if amount_usd == 0 or amount_usd is None:
+                    logger.debug(f"Skipping $0 USD transaction: {tx.get('transaction_hash', 'unknown')}")
                     continue
                 
                 # Create wallet activity record
