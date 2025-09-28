@@ -267,8 +267,8 @@ class WalletActivityCRUD:
         total_outflow_usd = Decimal('0')
         
         for activity in activities:
-            from_address = (activity.from_address or '').lower()
-            to_address = (activity.to_address or '').lower()
+            from_address = (activity.from_address or '').lower() if activity.from_address else ''
+            to_address = (activity.to_address or '').lower() if activity.to_address else ''
             amount_usd = activity.amount_usd or Decimal('0')
             
             if from_address == wallet_address and to_address != wallet_address:
@@ -311,8 +311,8 @@ class WalletActivityCRUD:
             daily_activity[date_key]["transactions"] += 1
             
             # Calculate inflow/outflow for this activity
-            from_address = (activity.from_address or '').lower()
-            to_address = (activity.to_address or '').lower()
+            from_address = (activity.from_address or '').lower() if activity.from_address else ''
+            to_address = (activity.to_address or '').lower() if activity.to_address else ''
             amount_usd = activity.amount_usd or Decimal('0')
             
             if from_address == wallet_address and to_address != wallet_address:
@@ -333,8 +333,8 @@ class WalletActivityCRUD:
         token_volumes = {}
         for activity in activities:
             if activity.token_symbol and activity.amount_usd:
-                from_address = (activity.from_address or '').lower()
-                to_address = (activity.to_address or '').lower()
+                from_address = (activity.from_address or '').lower() if activity.from_address else ''
+                to_address = (activity.to_address or '').lower() if activity.to_address else ''
                 amount_usd = activity.amount_usd or Decimal('0')
                 
                 # Only count tokens that represent actual wallet activity
