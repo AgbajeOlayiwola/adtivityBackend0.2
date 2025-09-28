@@ -358,6 +358,68 @@ class WalletActivityCRUD:
         first_transaction = min(timestamps) if timestamps else None
         last_transaction = max(timestamps) if timestamps else None
         
+        # Calculate address interaction rankings
+        address_interactions = {}
+        for activity in activities:
+            from_address = (activity.from_address or '').lower() if activity.from_address else ''
+            to_address = (activity.to_address or '').lower() if activity.to_address else ''
+            amount_usd = activity.amount_usd or Decimal('0')
+            
+            # Track interactions with other addresses (not self)
+            if from_address == wallet_address and to_address != wallet_address:
+                # Outgoing to this address
+                if to_address not in address_interactions:
+                    address_interactions[to_address] = {
+                        'address': to_address,
+                        'outgoing_count': 0,
+                        'incoming_count': 0,
+                        'outgoing_volume': Decimal('0'),
+                        'incoming_volume': Decimal('0'),
+                        'total_interactions': 0,
+                        'net_flow': Decimal('0')
+                    }
+                address_interactions[to_address]['outgoing_count'] += 1
+                address_interactions[to_address]['outgoing_volume'] += amount_usd
+                address_interactions[to_address]['total_interactions'] += 1
+                address_interactions[to_address]['net_flow'] -= amount_usd
+                
+            elif to_address == wallet_address and from_address != wallet_address:
+                # Incoming from this address
+                if from_address not in address_interactions:
+                    address_interactions[from_address] = {
+                        'address': from_address,
+                        'outgoing_count': 0,
+                        'incoming_count': 0,
+                        'outgoing_volume': Decimal('0'),
+                        'incoming_volume': Decimal('0'),
+                        'total_interactions': 0,
+                        'net_flow': Decimal('0')
+                    }
+                address_interactions[from_address]['incoming_count'] += 1
+                address_interactions[from_address]['incoming_volume'] += amount_usd
+                address_interactions[from_address]['total_interactions'] += 1
+                address_interactions[from_address]['net_flow'] += amount_usd
+        
+        # Sort addresses by total interactions (most frequent first)
+        top_addresses = sorted(
+            address_interactions.values(),
+            key=lambda x: x['total_interactions'],
+            reverse=True
+        )[:10]  # Top 10 most interacted addresses
+        
+        # Convert Decimal to float for JSON serialization
+        top_addresses_serialized = []
+        for addr in top_addresses:
+            top_addresses_serialized.append({
+                'address': addr['address'],
+                'outgoing_count': addr['outgoing_count'],
+                'incoming_count': addr['incoming_count'],
+                'outgoing_volume': float(addr['outgoing_volume']),
+                'incoming_volume': float(addr['incoming_volume']),
+                'total_interactions': addr['total_interactions'],
+                'net_flow': float(addr['net_flow'])
+            })
+        
         return {
             "total_transactions": total_transactions,
             "total_volume_usd": total_volume_usd,
@@ -371,6 +433,7 @@ class WalletActivityCRUD:
                 {"date": date, **data} for date, data in daily_activity.items()
             ],
             "top_tokens": top_tokens,
+            "top_addresses": top_addresses_serialized,
             "gas_spent_usd": gas_spent_usd,
             "first_transaction": first_transaction,
             "last_transaction": last_transaction
