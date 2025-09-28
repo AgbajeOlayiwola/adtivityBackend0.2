@@ -229,6 +229,7 @@ class WalletActivityCRUD:
                 "transaction_types": {},
                 "daily_activity": [],
                 "top_tokens": [],
+                "top_addresses": [],
                 "gas_spent_usd": Decimal('0'),
                 "first_transaction": None,
                 "last_transaction": None
@@ -251,6 +252,7 @@ class WalletActivityCRUD:
                 "transaction_types": {},
                 "daily_activity": [],
                 "top_tokens": [],
+                "top_addresses": [],
                 "gas_spent_usd": Decimal('0'),
                 "first_transaction": None,
                 "last_transaction": None
@@ -360,45 +362,49 @@ class WalletActivityCRUD:
         
         # Calculate address interaction rankings
         address_interactions = {}
-        for activity in activities:
-            from_address = (activity.from_address or '').lower() if activity.from_address else ''
-            to_address = (activity.to_address or '').lower() if activity.to_address else ''
-            amount_usd = activity.amount_usd or Decimal('0')
-            
-            # Track interactions with other addresses (not self)
-            if from_address == wallet_address and to_address != wallet_address:
-                # Outgoing to this address
-                if to_address not in address_interactions:
-                    address_interactions[to_address] = {
-                        'address': to_address,
-                        'outgoing_count': 0,
-                        'incoming_count': 0,
-                        'outgoing_volume': Decimal('0'),
-                        'incoming_volume': Decimal('0'),
-                        'total_interactions': 0,
-                        'net_flow': Decimal('0')
-                    }
-                address_interactions[to_address]['outgoing_count'] += 1
-                address_interactions[to_address]['outgoing_volume'] += amount_usd
-                address_interactions[to_address]['total_interactions'] += 1
-                address_interactions[to_address]['net_flow'] -= amount_usd
+        try:
+            for activity in activities:
+                from_address = (activity.from_address or '').lower() if activity.from_address else ''
+                to_address = (activity.to_address or '').lower() if activity.to_address else ''
+                amount_usd = activity.amount_usd or Decimal('0')
                 
-            elif to_address == wallet_address and from_address != wallet_address:
-                # Incoming from this address
-                if from_address not in address_interactions:
-                    address_interactions[from_address] = {
-                        'address': from_address,
-                        'outgoing_count': 0,
-                        'incoming_count': 0,
-                        'outgoing_volume': Decimal('0'),
-                        'incoming_volume': Decimal('0'),
-                        'total_interactions': 0,
-                        'net_flow': Decimal('0')
-                    }
-                address_interactions[from_address]['incoming_count'] += 1
-                address_interactions[from_address]['incoming_volume'] += amount_usd
-                address_interactions[from_address]['total_interactions'] += 1
-                address_interactions[from_address]['net_flow'] += amount_usd
+                # Track interactions with other addresses (not self)
+                if from_address == wallet_address and to_address != wallet_address:
+                    # Outgoing to this address
+                    if to_address not in address_interactions:
+                        address_interactions[to_address] = {
+                            'address': to_address,
+                            'outgoing_count': 0,
+                            'incoming_count': 0,
+                            'outgoing_volume': Decimal('0'),
+                            'incoming_volume': Decimal('0'),
+                            'total_interactions': 0,
+                            'net_flow': Decimal('0')
+                        }
+                    address_interactions[to_address]['outgoing_count'] += 1
+                    address_interactions[to_address]['outgoing_volume'] += amount_usd
+                    address_interactions[to_address]['total_interactions'] += 1
+                    address_interactions[to_address]['net_flow'] -= amount_usd
+                    
+                elif to_address == wallet_address and from_address != wallet_address:
+                    # Incoming from this address
+                    if from_address not in address_interactions:
+                        address_interactions[from_address] = {
+                            'address': from_address,
+                            'outgoing_count': 0,
+                            'incoming_count': 0,
+                            'outgoing_volume': Decimal('0'),
+                            'incoming_volume': Decimal('0'),
+                            'total_interactions': 0,
+                            'net_flow': Decimal('0')
+                        }
+                    address_interactions[from_address]['incoming_count'] += 1
+                    address_interactions[from_address]['incoming_volume'] += amount_usd
+                    address_interactions[from_address]['total_interactions'] += 1
+                    address_interactions[from_address]['net_flow'] += amount_usd
+        except Exception as e:
+            # If there's an error, set empty list
+            address_interactions = {}
         
         # Sort addresses by total interactions (most frequent first)
         top_addresses = sorted(
