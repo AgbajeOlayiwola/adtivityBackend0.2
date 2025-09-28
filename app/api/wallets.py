@@ -372,44 +372,6 @@ async def get_recent_wallet_activities(
         )
 
 
-@router.get("/connections/{wallet_id}/inflow-outflow")
-async def get_wallet_inflow_outflow_analytics(
-    wallet_id: UUID,
-    start_date: Optional[datetime] = Query(None, description="Start date for analytics"),
-    end_date: Optional[datetime] = Query(None, description="End date for analytics"),
-    current_user: PlatformUser = Depends(get_current_platform_user),
-    db: Session = Depends(get_db)
-):
-    """Get detailed inflow and outflow analytics for a specific wallet connection."""
-    try:
-        wallet = wallet_crud.get_wallet_connection(db, wallet_id)
-        if not wallet:
-            raise HTTPException(status_code=404, detail="Wallet connection not found")
-        
-        # Verify user owns the company
-        company = get_client_company_by_id(db, str(wallet.company_id))
-        if not company or company.platform_user_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Access denied")
-        
-        analytics = wallet_activity_crud.get_inflow_outflow_analytics(
-            db, wallet_id, start_date=start_date, end_date=end_date
-        )
-        
-        # Add wallet address to response
-        analytics["wallet_address"] = wallet.wallet_address
-        analytics["wallet_id"] = str(wallet_id)
-        
-        return analytics
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching inflow/outflow analytics: {str(e)}"
-        )
-
-
 @router.get("/company/{company_id}/overview")
 async def get_company_wallet_overview(
     company_id: str,
