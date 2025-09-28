@@ -147,6 +147,15 @@ class WalletActivityFetcher:
                 if existing:
                     continue  # Skip duplicate transactions
                 
+                # Filter out $0 transactions
+                amount = tx.get('value', 0)
+                amount_usd = tx.get('amount_usd', 0)
+                
+                # Skip transactions with zero value (both native token and USD)
+                if (amount == 0 or amount is None) and (amount_usd == 0 or amount_usd is None):
+                    logger.debug(f"Skipping $0 transaction: {tx.get('transaction_hash', 'unknown')}")
+                    continue
+                
                 # Create wallet activity record
                 activity_data = WalletActivityCreate(
                     wallet_connection_id=wallet_connection_id,
@@ -159,10 +168,8 @@ class WalletActivityFetcher:
                     token_address=tx.get('token_address'),
                     token_symbol=tx.get('token_symbol'),
                     token_name=tx.get('token_name'),
-                    amount=tx.get('value', 0),
-                    amount_usd=tx.get('amount_usd'),  # Would need price data
-                    inflow_usd=tx.get('inflow_usd'),
-                    outflow_usd=tx.get('outflow_usd'),
+                    amount=amount,
+                    amount_usd=amount_usd,
                     gas_used=tx.get('gas_used'),
                     gas_price=tx.get('gas_price'),
                     gas_fee_usd=tx.get('gas_fee_usd'),  # Would need price data

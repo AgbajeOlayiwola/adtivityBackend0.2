@@ -221,6 +221,9 @@ class WalletActivityCRUD:
             return {
                 "total_transactions": 0,
                 "total_volume_usd": Decimal('0'),
+                "total_inflow_usd": Decimal('0'),
+                "total_outflow_usd": Decimal('0'),
+                "net_flow_usd": Decimal('0'),
                 "unique_tokens": 0,
                 "networks": [],
                 "transaction_types": {},
@@ -233,9 +236,64 @@ class WalletActivityCRUD:
         
         # Calculate analytics
         total_transactions = len(activities)
-        total_volume_usd = sum(
-            activity.amount_usd or Decimal('0') for activity in activities
-        )
+        
+        # Calculate volume as inflow + outflow (actual wallet activity)
+        total_volume_usd = Decimal('0')
+        for activity in activities:
+            from_address = (activity.from_address or '').lower()
+            to_address = (activity.to_address or '').lower()
+            amount_usd = activity.amount_usd or Decimal('0')
+            
+            if from_address == wallet_address and to_address != wallet_address:
+                # Outgoing transaction (wallet is sender)
+                total_volume_usd += amount_usd
+            elif to_address == wallet_address and from_address != wallet_address:
+                # Incoming transaction (wallet is receiver)
+                total_volume_usd += amount_usd
+            # Self-transactions are not counted in volume as they don't represent actual flow
+        
+        # Calculate inflow and outflow totals based on from/to addresses
+        # Get wallet connection to determine wallet address
+        wallet_connection = db.query(WalletConnection).filter(
+            WalletConnection.id == wallet_connection_id
+        ).first()
+        
+        if not wallet_connection:
+            return {
+                "total_transactions": 0,
+                "total_volume_usd": Decimal('0'),
+                "total_inflow_usd": Decimal('0'),
+                "total_outflow_usd": Decimal('0'),
+                "net_flow_usd": Decimal('0'),
+                "unique_tokens": 0,
+                "networks": [],
+                "transaction_types": {},
+                "daily_activity": [],
+                "top_tokens": [],
+                "gas_spent_usd": Decimal('0'),
+                "first_transaction": None,
+                "last_transaction": None
+            }
+        
+        wallet_address = wallet_connection.wallet_address.lower()
+        total_inflow_usd = Decimal('0')
+        total_outflow_usd = Decimal('0')
+        
+        for activity in activities:
+            from_address = (activity.from_address or '').lower()
+            to_address = (activity.to_address or '').lower()
+            amount_usd = activity.amount_usd or Decimal('0')
+            
+            if from_address == wallet_address and to_address != wallet_address:
+                # Outgoing transaction (wallet is sender)
+                total_outflow_usd += amount_usd
+            elif to_address == wallet_address and from_address != wallet_address:
+                # Incoming transaction (wallet is receiver)
+                total_inflow_usd += amount_usd
+            # Self-transactions (wallet to itself) are treated as neutral
+        
+        net_flow_usd = total_inflow_usd - total_outflow_usd
+        
         unique_tokens = len(set(
             activity.token_address for activity in activities 
             if activity.token_address
@@ -248,21 +306,53 @@ class WalletActivityCRUD:
             tx_type = activity.transaction_type
             transaction_types[tx_type] = transaction_types.get(tx_type, 0) + 1
         
-        # Daily activity
+        # Daily activity with inflow/outflow
         daily_activity = {}
         for activity in activities:
             date_key = activity.timestamp.date().isoformat()
             if date_key not in daily_activity:
-                daily_activity[date_key] = {"transactions": 0, "volume_usd": Decimal('0')}
+                daily_activity[date_key] = {
+                    "transactions": 0, 
+                    "volume_usd": Decimal('0'),
+                    "inflow_usd": Decimal('0'),
+                    "outflow_usd": Decimal('0'),
+                    "net_flow_usd": Decimal('0')
+                }
+            
             daily_activity[date_key]["transactions"] += 1
-            daily_activity[date_key]["volume_usd"] += activity.amount_usd or Decimal('0')
+            
+            # Calculate inflow/outflow for this activity
+            from_address = (activity.from_address or '').lower()
+            to_address = (activity.to_address or '').lower()
+            amount_usd = activity.amount_usd or Decimal('0')
+            
+            if from_address == wallet_address and to_address != wallet_address:
+                # Outgoing transaction (wallet is sender)
+                daily_activity[date_key]["outflow_usd"] += amount_usd
+                daily_activity[date_key]["volume_usd"] += amount_usd  # Add to volume
+            elif to_address == wallet_address and from_address != wallet_address:
+                # Incoming transaction (wallet is receiver)
+                daily_activity[date_key]["inflow_usd"] += amount_usd
+                daily_activity[date_key]["volume_usd"] += amount_usd  # Add to volume
+            # Self-transactions are not counted in volume as they don't represent actual flow
+            
+            daily_activity[date_key]["net_flow_usd"] = (
+                daily_activity[date_key]["inflow_usd"] - daily_activity[date_key]["outflow_usd"]
+            )
         
-        # Top tokens
+        # Top tokens (based on actual wallet activity - inflow + outflow)
         token_volumes = {}
         for activity in activities:
             if activity.token_symbol and activity.amount_usd:
-                token = activity.token_symbol
-                token_volumes[token] = token_volumes.get(token, Decimal('0')) + activity.amount_usd
+                from_address = (activity.from_address or '').lower()
+                to_address = (activity.to_address or '').lower()
+                amount_usd = activity.amount_usd or Decimal('0')
+                
+                # Only count tokens that represent actual wallet activity
+                if (from_address == wallet_address and to_address != wallet_address) or \
+                   (to_address == wallet_address and from_address != wallet_address):
+                    token = activity.token_symbol
+                    token_volumes[token] = token_volumes.get(token, Decimal('0')) + amount_usd
         
         top_tokens = [
             {"symbol": token, "volume_usd": float(volume)}
@@ -282,6 +372,9 @@ class WalletActivityCRUD:
         return {
             "total_transactions": total_transactions,
             "total_volume_usd": total_volume_usd,
+            "total_inflow_usd": total_inflow_usd,
+            "total_outflow_usd": total_outflow_usd,
+            "net_flow_usd": net_flow_usd,
             "unique_tokens": unique_tokens,
             "networks": networks,
             "transaction_types": transaction_types,
@@ -318,6 +411,167 @@ class WalletActivityCRUD:
                 WalletActivity.timestamp >= since
             )
         ).order_by(desc(WalletActivity.timestamp)).all()
+    
+    def get_inflow_outflow_analytics(
+        self, 
+        db: Session, 
+        wallet_connection_id: uuid.UUID,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """Get detailed inflow and outflow analytics for a wallet connection."""
+        query = db.query(WalletActivity).filter(
+            WalletActivity.wallet_connection_id == wallet_connection_id
+        )
+        
+        if start_date:
+            query = query.filter(WalletActivity.timestamp >= start_date)
+        if end_date:
+            query = query.filter(WalletActivity.timestamp <= end_date)
+        
+        activities = query.all()
+        
+        if not activities:
+            return {
+                "total_inflow_usd": Decimal('0'),
+                "total_outflow_usd": Decimal('0'),
+                "net_flow_usd": Decimal('0'),
+                "inflow_transactions": 0,
+                "outflow_transactions": 0,
+                "inflow_by_token": {},
+                "outflow_by_token": {},
+                "inflow_by_network": {},
+                "outflow_by_network": {},
+                "daily_flow": []
+            }
+        
+        # Get wallet connection to determine wallet address
+        wallet_connection = db.query(WalletConnection).filter(
+            WalletConnection.id == wallet_connection_id
+        ).first()
+        
+        if not wallet_connection:
+            return {
+                "total_inflow_usd": Decimal('0'),
+                "total_outflow_usd": Decimal('0'),
+                "net_flow_usd": Decimal('0'),
+                "inflow_transactions": 0,
+                "outflow_transactions": 0,
+                "inflow_by_token": {},
+                "outflow_by_token": {},
+                "inflow_by_network": {},
+                "outflow_by_network": {},
+                "daily_flow": []
+            }
+        
+        wallet_address = wallet_connection.wallet_address.lower()
+        
+        # Calculate totals dynamically
+        total_inflow_usd = Decimal('0')
+        total_outflow_usd = Decimal('0')
+        inflow_transactions = 0
+        outflow_transactions = 0
+        
+        for activity in activities:
+            from_address = (activity.from_address or '').lower()
+            to_address = (activity.to_address or '').lower()
+            amount_usd = activity.amount_usd or Decimal('0')
+            
+            if from_address == wallet_address and to_address != wallet_address:
+                # Outgoing transaction (wallet is sender)
+                total_outflow_usd += amount_usd
+                outflow_transactions += 1
+            elif to_address == wallet_address and from_address != wallet_address:
+                # Incoming transaction (wallet is receiver)
+                total_inflow_usd += amount_usd
+                inflow_transactions += 1
+        
+        net_flow_usd = total_inflow_usd - total_outflow_usd
+        
+        # Group by token
+        inflow_by_token = {}
+        outflow_by_token = {}
+        for activity in activities:
+            token = activity.token_symbol or 'Unknown'
+            from_address = (activity.from_address or '').lower()
+            to_address = (activity.to_address or '').lower()
+            amount_usd = activity.amount_usd or Decimal('0')
+            
+            if from_address == wallet_address and to_address != wallet_address:
+                # Outgoing transaction (wallet is sender)
+                outflow_by_token[token] = outflow_by_token.get(token, Decimal('0')) + amount_usd
+            elif to_address == wallet_address and from_address != wallet_address:
+                # Incoming transaction (wallet is receiver)
+                inflow_by_token[token] = inflow_by_token.get(token, Decimal('0')) + amount_usd
+        
+        # Group by network
+        inflow_by_network = {}
+        outflow_by_network = {}
+        for activity in activities:
+            network = activity.network or 'Unknown'
+            from_address = (activity.from_address or '').lower()
+            to_address = (activity.to_address or '').lower()
+            amount_usd = activity.amount_usd or Decimal('0')
+            
+            if from_address == wallet_address and to_address != wallet_address:
+                # Outgoing transaction (wallet is sender)
+                outflow_by_network[network] = outflow_by_network.get(network, Decimal('0')) + amount_usd
+            elif to_address == wallet_address and from_address != wallet_address:
+                # Incoming transaction (wallet is receiver)
+                inflow_by_network[network] = inflow_by_network.get(network, Decimal('0')) + amount_usd
+        
+        # Daily flow
+        daily_flow = {}
+        for activity in activities:
+            date_key = activity.timestamp.date().isoformat()
+            if date_key not in daily_flow:
+                daily_flow[date_key] = {
+                    "inflow_usd": Decimal('0'),
+                    "outflow_usd": Decimal('0'),
+                    "net_flow_usd": Decimal('0'),
+                    "inflow_count": 0,
+                    "outflow_count": 0
+                }
+            
+            from_address = (activity.from_address or '').lower()
+            to_address = (activity.to_address or '').lower()
+            amount_usd = activity.amount_usd or Decimal('0')
+            
+            if from_address == wallet_address and to_address != wallet_address:
+                # Outgoing transaction (wallet is sender)
+                daily_flow[date_key]["outflow_usd"] += amount_usd
+                daily_flow[date_key]["outflow_count"] += 1
+            elif to_address == wallet_address and from_address != wallet_address:
+                # Incoming transaction (wallet is receiver)
+                daily_flow[date_key]["inflow_usd"] += amount_usd
+                daily_flow[date_key]["inflow_count"] += 1
+            
+            daily_flow[date_key]["net_flow_usd"] = (
+                daily_flow[date_key]["inflow_usd"] - daily_flow[date_key]["outflow_usd"]
+            )
+        
+        return {
+            "total_inflow_usd": total_inflow_usd,
+            "total_outflow_usd": total_outflow_usd,
+            "net_flow_usd": net_flow_usd,
+            "inflow_transactions": inflow_transactions,
+            "outflow_transactions": outflow_transactions,
+            "inflow_by_token": {token: float(amount) for token, amount in inflow_by_token.items()},
+            "outflow_by_token": {token: float(amount) for token, amount in outflow_by_token.items()},
+            "inflow_by_network": {network: float(amount) for network, amount in inflow_by_network.items()},
+            "outflow_by_network": {network: float(amount) for network, amount in outflow_by_network.items()},
+            "daily_flow": [
+                {
+                    "date": date,
+                    "inflow_usd": float(data["inflow_usd"]),
+                    "outflow_usd": float(data["outflow_usd"]),
+                    "net_flow_usd": float(data["net_flow_usd"]),
+                    "inflow_count": data["inflow_count"],
+                    "outflow_count": data["outflow_count"]
+                }
+                for date, data in daily_flow.items()
+            ]
+        }
 
 
 # Create instances
