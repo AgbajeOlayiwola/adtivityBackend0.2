@@ -65,8 +65,8 @@ class BackgroundTaskService:
                     
                     # Add delay between accounts to respect rate limits
                     if i < len(twitter_accounts) - 1:  # Don't delay after the last account
-                        logger.info("⏳ Waiting 5 seconds before next account...")
-                        await asyncio.sleep(5)
+                        logger.info("⏳ Waiting 12 seconds before next account...")
+                        await asyncio.sleep(12)
                         
                 except Exception as e:
                     logger.error(f"❌ Error syncing account {account.twitter_handle}: {e}")
@@ -108,8 +108,8 @@ class BackgroundTaskService:
             
             # Determine sync strategy
             if existing_tweets_count == 0:
-                # First sync: get more tweets (up to 200)
-                max_tweets = 200
+                # First sync: get a moderate number of tweets to reduce rate usage
+                max_tweets = 50
                 logger.info(f"🔄 First sync for @{account.twitter_handle} - fetching up to {max_tweets} tweets")
             else:
                 # Ongoing sync: only recent tweets (last 24 hours)

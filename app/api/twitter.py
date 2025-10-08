@@ -305,7 +305,7 @@ async def search_hashtag(
 
 
 # New Mention-related Endpoints
-@router.get("/accounts/{twitter_id}/mentions", response_model=List[MentionResponse])
+@router.get("/accounts/{twitter_id}/mentions", response_model=List[TwitterTweetResponse])
 async def get_company_mentions(
     twitter_id: UUID,
     limit: int = Query(100, ge=1, le=1000),
@@ -314,7 +314,8 @@ async def get_company_mentions(
 ):
     """Get all mentions of a company Twitter account."""
     mentions = twitter_crud.get_company_mentions(db, twitter_id, limit)
-    return mentions
+    # Convert ORM tweets to response schema to handle UUID/string fields
+    return [TwitterTweetResponse.from_orm(m) for m in mentions]
 
 
 @router.get("/accounts/{twitter_id}/mentions/analytics")
@@ -418,7 +419,7 @@ async def setup_mention_notifications(
     }
 
 
-@router.get("/mentions/recent", response_model=List[MentionResponse])
+@router.get("/mentions/recent", response_model=List[TwitterTweetResponse])
 async def get_recent_mentions(
     company_id: str = Query(...),
     hours: int = Query(24, ge=1, le=168),  # Default to last 24 hours, max 1 week
@@ -441,8 +442,9 @@ async def get_recent_mentions(
         db, company_twitter.id, start_time, end_time
     )
     
-    # Limit results
-    return mentions[:limit]
+    # Limit results and convert
+    limited = mentions[:limit]
+    return [TwitterTweetResponse.from_orm(m) for m in limited]
 
 
 # Twitter User Autocomplete Endpoints
@@ -676,6 +678,24 @@ async def stop_auto_sync(
         "success": True,
         "message": "Auto sync stopped",
         "timestamp": datetime.utcnow().isoformat()
+    }
+
+
+# Utility endpoint: get company's Twitter user ID
+@router.get("/company/{company_id}/twitter-id")
+async def get_company_twitter_id(
+    company_id: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Return the Twitter user ID (and handle) for a company if configured."""
+    twitter_account = twitter_crud.get_company_twitter_by_company(db, company_id)
+    if not twitter_account:
+        raise HTTPException(status_code=404, detail="No Twitter account found for this company")
+    return {
+        "company_id": str(twitter_account.company_id),
+        "twitter_user_id": twitter_account.twitter_user_id,
+        "twitter_handle": twitter_account.twitter_handle
     }
 
 

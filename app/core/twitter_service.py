@@ -63,9 +63,9 @@ class TwitterService:
             print(f"⏳ Rate limit active. Wait {wait_time:.0f} seconds before next request.")
             return False
         
-        # Rate limiting: wait at least 2 seconds between requests
-        if current_time - self.last_request_time < 2:
-            await asyncio.sleep(2 - (current_time - self.last_request_time))
+        # Rate limiting: wait at least 10 seconds between requests
+        if current_time - self.last_request_time < 10:
+            await asyncio.sleep(10 - (current_time - self.last_request_time))
         
         return True
     
