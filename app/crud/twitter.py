@@ -40,6 +40,10 @@ class TwitterCRUD:
     def get_company_twitter_by_company(self, db: Session, company_id: str) -> Optional[CompanyTwitter]:
         """Get company Twitter account by company ID."""
         return db.query(CompanyTwitter).filter(CompanyTwitter.company_id == company_id).first()
+
+    def get_company_twitter_by_twitter_user_id(self, db: Session, twitter_user_id: str) -> Optional[CompanyTwitter]:
+        """Get company Twitter account by Twitter numeric user ID."""
+        return db.query(CompanyTwitter).filter(CompanyTwitter.twitter_user_id == twitter_user_id).first()
     
     def update_company_twitter(self, db: Session, twitter_id: UUID, update_data: CompanyTwitterUpdate) -> Optional[CompanyTwitter]:
         """Update company Twitter account."""
