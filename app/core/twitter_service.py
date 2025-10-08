@@ -334,6 +334,11 @@ class TwitterService:
     async def get_user_tweets(self, user_id: str, max_results: int = 100) -> List[TwitterTweetBase]:
         """Get recent tweets from a user."""
         try:
+            # Twitter API v2 requires max_results between 5 and 100
+            if max_results < 5:
+                max_results = 5
+            elif max_results > 100:
+                max_results = 100
             # Make request with retry logic
             response = await self._make_request_with_retry(
                 f"{self.base_url}/users/{user_id}/tweets",
