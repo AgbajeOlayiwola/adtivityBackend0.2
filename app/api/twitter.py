@@ -275,7 +275,7 @@ async def get_company_tweets(
 ):
     """Get tweets for a company Twitter account."""
     tweets = twitter_crud.get_company_tweets(db, twitter_id, limit)
-    return tweets
+    return [TwitterTweetResponse.from_orm(t) for t in tweets]
 
 
 @router.get("/accounts/{twitter_id}/followers", response_model=List[TwitterFollowerResponse])
