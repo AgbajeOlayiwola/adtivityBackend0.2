@@ -690,6 +690,8 @@ class TwitterTweetBase(BaseModel):
     like_count: int = 0
     reply_count: int = 0
     quote_count: int = 0
+    hashtags: List[str] = Field(default_factory=list)
+    mentions: List[str] = Field(default_factory=list)
 
 
 class TwitterTweetResponse(TwitterTweetBase):

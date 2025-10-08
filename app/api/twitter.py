@@ -199,9 +199,6 @@ async def sync_twitter_data(
                     # Check if tweet already exists
                     existing_tweet = twitter_crud.get_tweet_by_id(db, tweet.tweet_id)
                     if not existing_tweet:
-                        # Calculate sentiment
-                        sentiment_score, sentiment_label = twitter_service.calculate_sentiment(tweet.text)
-                        
                         tweet_data = {
                             "tweet_id": tweet.tweet_id,
                             "company_twitter_id": twitter_account.id,
@@ -212,9 +209,7 @@ async def sync_twitter_data(
                             "reply_count": tweet.reply_count,
                             "quote_count": tweet.quote_count,
                             "hashtags": tweet.hashtags,
-                            "mentions": tweet.mentions,
-                            "sentiment_score": sentiment_score,
-                            "sentiment_label": sentiment_label
+                            "mentions": tweet.mentions
                         }
                         
                         twitter_crud.create_tweet(db, tweet_data)
@@ -715,9 +710,6 @@ async def initial_sync_all_tweets(
             # Check if tweet already exists
             existing_tweet = twitter_crud.get_tweet_by_id(db, tweet.tweet_id)
             if not existing_tweet:
-                # Calculate sentiment
-                sentiment_score, sentiment_label = twitter_service.calculate_sentiment(tweet.text)
-                
                 tweet_data = {
                     "tweet_id": tweet.tweet_id,
                     "company_twitter_id": twitter_account.id,
@@ -728,9 +720,7 @@ async def initial_sync_all_tweets(
                     "reply_count": tweet.reply_count,
                     "quote_count": tweet.quote_count,
                     "hashtags": tweet.hashtags,
-                    "mentions": tweet.mentions,
-                    "sentiment_score": sentiment_score,
-                    "sentiment_label": sentiment_label
+                    "mentions": tweet.mentions
                 }
                 
                 twitter_crud.create_tweet(db, tweet_data)

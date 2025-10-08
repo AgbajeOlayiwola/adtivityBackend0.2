@@ -121,7 +121,9 @@ class BackgroundTaskService:
             tweets_synced = 0
             for tweet in tweets:
                 # For first sync, sync all tweets. For ongoing sync, only recent ones
-                if existing_tweets_count == 0 or tweet.created_at > datetime.utcnow() - timedelta(hours=24):
+                # Make RHS timezone-aware to match tweet.created_at (UTC)
+                from datetime import timezone
+                if existing_tweets_count == 0 or tweet.created_at > (datetime.now(timezone.utc) - timedelta(hours=24)):
                     existing_tweet = twitter_crud.get_tweet_by_id(db, tweet.tweet_id)
                     if not existing_tweet:
                         # Calculate sentiment
@@ -137,9 +139,7 @@ class BackgroundTaskService:
                             "reply_count": tweet.reply_count,
                             "quote_count": tweet.quote_count,
                             "hashtags": tweet.hashtags,
-                            "mentions": tweet.mentions,
-                            "sentiment_score": sentiment_score,
-                            "sentiment_label": sentiment_label
+                            "mentions": tweet.mentions
                         }
                         
                         twitter_crud.create_tweet(db, tweet_data)

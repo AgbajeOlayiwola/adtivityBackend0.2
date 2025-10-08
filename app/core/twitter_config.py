@@ -9,14 +9,14 @@ class TwitterSettings(BaseSettings):
     """Twitter API configuration settings."""
     
     # Twitter API v2 credentials
-    TWITTER_BEARER_TOKEN: str = "AAAAAAAAAAAAAAAAAAAAACPE3wEAAAAAskoYrlgAREowhCyJLNNXyq2MBPM%3DTrRkZH4jbWXmvia43jFNpzFzHP1r7CB9ljokcr2n4JrOTEqdpe"
-    TWITTER_API_KEY: str = "TGu0dn0Gv345OR6s7aVacuf3Z"
-    TWITTER_API_SECRET: str = "Vdl2RoHDaPrFpomFe9kBX3qVVUyJrPQrGNpReZyx1jCUbHLeOM"
-    TWITTER_ACCESS_TOKEN: str = "1562397620005646338-WcoLwEbCaTHOVgUmbgrp25MjVl525W"
-    TWITTER_ACCESS_TOKEN_SECRET: str = "jTECooIpBa6pBAvFLAf4rZDMkL276buMGYRlNtLaduyOE"
+    TWITTER_BEARER_TOKEN: str = "AAAAAAAAAAAAAAAAAAAAAGqI4gEAAAAA3Ax9fRumjjkVZcKO1NJAlLqAUW8%3Dj0ukJpi0Qw164KiUkPX5JBx8JgCgnGFVu8Aa2ZFCtkGNcKRApw"
+    TWITTER_API_KEY: str = "sF90j2rPakrsdbLSjmYugj5CU"
+    TWITTER_API_SECRET: str = "T56B3ULtwuYaXeXKbTFXRU4oOVeIyNVdc0YPs1rTMzr6wwokJh"
+    TWITTER_ACCESS_TOKEN: str = "1918950441817149440-ZEPzdvI3L1MVuczEiDCbDqa7lnzIYR"
+    TWITTER_ACCESS_TOKEN_SECRET: str = "qQHmKfCsXJwLWJGY8LhAe01LLeAeV0lWONY0rgkR2I5V1"
     
     # App information
-    TWITTER_APP_NAME: str = "1963165157540110336cyber_rado"
+    TWITTER_APP_NAME: str = "1975324211578314752UseAdtivity"
     
     # Twitter API endpoints
     TWITTER_API_BASE_URL: str = "https://api.twitter.com/2"
