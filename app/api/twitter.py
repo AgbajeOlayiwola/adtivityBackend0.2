@@ -614,6 +614,7 @@ async def get_sync_status(
 
 @router.get("/rate-limit/status")
 async def get_rate_limit_status(
+    twitter_id: str | None = Query(None, description="Optional CompanyTwitter UUID to echo back"),
     current_user: PlatformUser = Depends(get_current_platform_user)
 ):
     """Get current Twitter API rate limit status."""
@@ -634,6 +635,10 @@ async def get_rate_limit_status(
     
     if rate_limit_info["rate_limit_active"]:
         rate_limit_info["reset_time"] = datetime.fromtimestamp(twitter_service.rate_limit_reset).isoformat()
+    
+    # Echo provided twitter_id for caller convenience
+    if twitter_id:
+        rate_limit_info["twitter_id"] = twitter_id
     
     return rate_limit_info
 

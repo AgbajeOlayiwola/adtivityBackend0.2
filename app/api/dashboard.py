@@ -694,12 +694,16 @@ async def get_twitter_status_summary(
     
     # Get companies with Twitter integration
     twitter_companies = [
-        {
+        (lambda ct: {
             "id": str(company.id),
             "name": company.name,
             "is_twitter_added": company.is_twitter_added,
-            "created_at": company.created_at
-        }
+            "created_at": company.created_at,
+            # Include CompanyTwitter.id when available
+            "twitter_id": str(ct.id) if ct else None,
+            "twitter_user_id": ct.twitter_user_id if ct else None,
+            "twitter_handle": ct.twitter_handle if ct else None
+        })(crud.twitter.twitter_crud.get_company_twitter_by_company(db, str(company.id)))
         for company in companies if company.is_twitter_added
     ]
     
