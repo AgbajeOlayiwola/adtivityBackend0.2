@@ -681,7 +681,7 @@ async def stop_auto_sync(
     }
 
 
-# Utility endpoint: get company's Twitter user ID
+# Utility endpoint: get company's Twitter user ID by company UUID
 @router.get("/company/{company_id}/twitter-id")
 async def get_company_twitter_id(
     company_id: str,
@@ -693,7 +693,27 @@ async def get_company_twitter_id(
     if not twitter_account:
         raise HTTPException(status_code=404, detail="No Twitter account found for this company")
     return {
+        "twitter_id": str(twitter_account.id),
         "company_id": str(twitter_account.company_id),
+        "twitter_user_id": twitter_account.twitter_user_id,
+        "twitter_handle": twitter_account.twitter_handle
+    }
+
+
+# Utility endpoint: reverse lookup by Twitter numeric user ID
+@router.get("/twitter-user/{twitter_user_id}")
+async def get_company_by_twitter_user_id(
+    twitter_user_id: str,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Return the company Twitter record by Twitter numeric user ID."""
+    twitter_account = twitter_crud.get_company_twitter_by_twitter_user_id(db, twitter_user_id)
+    if not twitter_account:
+        raise HTTPException(status_code=404, detail="No company found for this Twitter user ID")
+    return {
+        "company_id": str(twitter_account.company_id),
+        "twitter_id": str(twitter_account.id),
         "twitter_user_id": twitter_account.twitter_user_id,
         "twitter_handle": twitter_account.twitter_handle
     }
