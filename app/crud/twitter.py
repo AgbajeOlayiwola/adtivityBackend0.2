@@ -1,6 +1,8 @@
 """CRUD operations for Twitter data."""
 
 from typing import List, Optional, Dict, Any
+import json
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, desc, func
 from datetime import datetime, date, timedelta
@@ -63,11 +65,34 @@ class TwitterCRUD:
     # Twitter Tweet operations
     def create_tweet(self, db: Session, tweet_data: Dict[str, Any]) -> TwitterTweet:
         """Create a new Twitter tweet record."""
-        db_tweet = TwitterTweet(**tweet_data)
-        db.add(db_tweet)
-        db.commit()
-        db.refresh(db_tweet)
-        return db_tweet
+        # Ensure JSON columns are proper lists (not JSON-encoded strings)
+        hashtags = tweet_data.get("hashtags")
+        mentions = tweet_data.get("mentions")
+        if isinstance(hashtags, str):
+            try:
+                tweet_data["hashtags"] = json.loads(hashtags)
+            except Exception:
+                tweet_data["hashtags"] = []
+        if isinstance(mentions, str):
+            try:
+                tweet_data["mentions"] = json.loads(mentions)
+            except Exception:
+                tweet_data["mentions"] = []
+
+        try:
+            db_tweet = TwitterTweet(**tweet_data)
+            db.add(db_tweet)
+            db.commit()
+            db.refresh(db_tweet)
+            return db_tweet
+        except IntegrityError:
+            # Likely duplicate tweet_id due to race; rollback and return existing
+            db.rollback()
+            existing = self.get_tweet_by_id(db, tweet_data.get("tweet_id"))
+            if existing:
+                return existing
+            # If not found for some reason, re-raise
+            raise
     
     def get_tweet_by_id(self, db: Session, tweet_id: str) -> Optional[TwitterTweet]:
         """Get tweet by Twitter ID."""
