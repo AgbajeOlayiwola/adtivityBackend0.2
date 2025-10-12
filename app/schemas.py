@@ -31,6 +31,10 @@ class SDKEventType(str, Enum):
     - GROUP: The user has been added to a group (e.g., a company).
     - ALIAS: An identifier is being linked to another (e.g., anonymousId to userId).
     - TX: A blockchain transaction event.
+    - PAYMENT_STARTED: A payment process has been initiated.
+    - PAYMENT_COMPLETED: A payment has been successfully completed.
+    - PAYMENT_FAILED: A payment has failed.
+    - PAYMENT_CANCELLED: A payment has been cancelled.
     """
     TRACK = "track"
     PAGE = "page"
@@ -39,6 +43,10 @@ class SDKEventType(str, Enum):
     GROUP = "group"
     ALIAS = "alias"
     TX = "tx"
+    PAYMENT_STARTED = "payment_started"
+    PAYMENT_COMPLETED = "payment_completed"
+    PAYMENT_FAILED = "payment_failed"
+    PAYMENT_CANCELLED = "payment_cancelled"
     
     # Add uppercase variants for backward compatibility
     TRACK_UPPER = "TRACK"
@@ -48,6 +56,10 @@ class SDKEventType(str, Enum):
     GROUP_UPPER = "GROUP"
     ALIAS_UPPER = "ALIAS"
     TX_UPPER = "TX"
+    PAYMENT_STARTED_UPPER = "PAYMENT_STARTED"
+    PAYMENT_COMPLETED_UPPER = "PAYMENT_COMPLETED"
+    PAYMENT_FAILED_UPPER = "PAYMENT_FAILED"
+    PAYMENT_CANCELLED_UPPER = "PAYMENT_CANCELLED"
 
 # ====================================================================================
 # --- Common Schemas: Reusable data models for shared components. ---
@@ -1622,3 +1634,117 @@ class UserEngagementDashboardResponse(BaseModel):
     device_breakdown: Dict[str, int] = Field(..., description="Device type breakdown")
     country_breakdown: Dict[str, int] = Field(..., description="Country breakdown")
     hourly_breakdown: Dict[str, int] = Field(..., description="Hourly activity breakdown")
+
+
+# ====================================================================================
+# --- Payment Tracking Schemas ---
+# ====================================================================================
+
+class PaymentStatus(str, Enum):
+    """Payment status enumeration."""
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class PaymentSessionBase(BaseModel):
+    """Base payment session schema."""
+    user_id: str = Field(..., description="User identifier")
+    session_id: str = Field(..., description="Session identifier")
+    payment_id: str = Field(..., description="External payment ID")
+    payment_status: PaymentStatus = Field(..., description="Payment status")
+    payment_amount: Optional[Decimal] = Field(None, description="Payment amount")
+    payment_currency: Optional[str] = Field(None, max_length=10, description="Payment currency")
+    payment_method: Optional[str] = Field(None, max_length=50, description="Payment method")
+    wallet_address: Optional[str] = Field(None, description="Wallet address")
+    chain_id: Optional[str] = Field(None, description="Blockchain chain ID")
+    transaction_hash: Optional[str] = Field(None, description="Transaction hash")
+    contract_address: Optional[str] = Field(None, description="Contract address")
+    payment_started_at: datetime = Field(..., description="Payment start time")
+    payment_completed_at: Optional[datetime] = Field(None, description="Payment completion time")
+    payment_failed_at: Optional[datetime] = Field(None, description="Payment failure time")
+    page_url: Optional[str] = Field(None, description="Page URL where payment was initiated")
+    referrer: Optional[str] = Field(None, description="Referrer URL")
+    user_agent: Optional[str] = Field(None, description="User agent string")
+    country: Optional[str] = Field(None, max_length=2, description="Country code")
+    region: Optional[str] = Field(None, max_length=100, description="Region name")
+    city: Optional[str] = Field(None, max_length=100, description="City name")
+    ip_address: Optional[str] = Field(None, max_length=45, description="IP address")
+    properties: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional properties")
+
+
+class PaymentSessionCreate(PaymentSessionBase):
+    """Schema for creating a payment session."""
+    company_id: uuid.UUID = Field(..., description="Company ID")
+
+
+class PaymentSessionUpdate(BaseModel):
+    """Schema for updating a payment session."""
+    payment_status: Optional[PaymentStatus] = None
+    payment_amount: Optional[Decimal] = None
+    payment_currency: Optional[str] = Field(None, max_length=10)
+    payment_method: Optional[str] = Field(None, max_length=50)
+    transaction_hash: Optional[str] = None
+    contract_address: Optional[str] = None
+    payment_completed_at: Optional[datetime] = None
+    payment_failed_at: Optional[datetime] = None
+    properties: Optional[Dict[str, Any]] = None
+
+
+class PaymentSessionResponse(PaymentSessionBase):
+    """Schema for payment session response."""
+    id: str
+    company_id: str
+    created_at: datetime
+    updated_at: datetime
+    
+    @classmethod
+    def from_orm(cls, obj):
+        """Convert ORM object to response schema."""
+        data = {
+            "id": str(obj.id),
+            "company_id": str(obj.company_id),
+            "user_id": obj.user_id,
+            "session_id": obj.session_id,
+            "payment_id": obj.payment_id,
+            "payment_status": obj.payment_status,
+            "payment_amount": obj.payment_amount,
+            "payment_currency": obj.payment_currency,
+            "payment_method": obj.payment_method,
+            "wallet_address": obj.wallet_address,
+            "chain_id": obj.chain_id,
+            "transaction_hash": obj.transaction_hash,
+            "contract_address": obj.contract_address,
+            "payment_started_at": obj.payment_started_at,
+            "payment_completed_at": obj.payment_completed_at,
+            "payment_failed_at": obj.payment_failed_at,
+            "page_url": obj.page_url,
+            "referrer": obj.referrer,
+            "user_agent": obj.user_agent,
+            "country": obj.country,
+            "region": obj.region,
+            "city": obj.city,
+            "ip_address": obj.ip_address,
+            "properties": obj.properties or {},
+            "created_at": obj.created_at,
+            "updated_at": obj.updated_at
+        }
+        return cls(**data)
+
+
+class PaymentAnalyticsResponse(BaseModel):
+    """Schema for payment analytics response."""
+    total_payments: int
+    completed_payments: int
+    failed_payments: int
+    pending_payments: int
+    cancelled_payments: int
+    completion_rate: float
+    total_revenue: Decimal
+    average_payment_amount: Decimal
+    payment_methods_breakdown: Dict[str, int]
+    currency_breakdown: Dict[str, int]
+    chain_breakdown: Dict[str, int]
+    recent_payments: List[PaymentSessionResponse]
+    conversion_funnel: Dict[str, int]  # started -> completed -> failed

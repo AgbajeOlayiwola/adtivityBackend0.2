@@ -4,7 +4,7 @@
 # the tables relate to each other.
 
 # --- Step 1: Get Our Tools Ready for Building! ---
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, JSON, DECIMAL, Date, Float, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, JSON, DECIMAL, Date, Float, UniqueConstraint, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.ext.declarative import declarative_base
@@ -693,6 +693,72 @@ class UserEngagement(Base):
         Index('idx_engagement_timing', 'event_timestamp'),
         Index('idx_session_engagement', 'session_id', 'event_timestamp'),
         Index('idx_user_events', 'user_id', 'event_timestamp'),
+    )
+
+
+# ====================================================================================
+# --- Payment Tracking Models ---
+# ====================================================================================
+
+class PaymentSession(Base):
+    """
+    Blueprint for the 'payment_sessions' table.
+    Tracks payment attempts and completion status for Web3 users.
+    """
+    __tablename__ = "payment_sessions"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    user_id = Column(String, nullable=False, index=True)
+    session_id = Column(String, nullable=False, index=True)
+    
+    # Payment details
+    payment_id = Column(String, nullable=False, unique=True, index=True)  # External payment ID
+    payment_status = Column(String, nullable=False, index=True)  # 'pending', 'completed', 'failed', 'cancelled'
+    payment_amount = Column(Numeric(20, 8), nullable=True)  # Payment amount
+    payment_currency = Column(String(10), nullable=True)  # e.g., 'USDC', 'ETH', 'USD'
+    payment_method = Column(String(50), nullable=True)  # e.g., 'crypto', 'card', 'bank'
+    
+    # Web3 specific fields
+    wallet_address = Column(String, nullable=True, index=True)
+    chain_id = Column(String, nullable=True, index=True)
+    transaction_hash = Column(String, nullable=True, index=True)
+    contract_address = Column(String, nullable=True, index=True)
+    
+    # Payment flow tracking
+    payment_started_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    payment_completed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    payment_failed_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    
+    # Session context
+    page_url = Column(String)
+    referrer = Column(String)
+    user_agent = Column(String)
+    
+    # Geographic data
+    country = Column(String(2), index=True)
+    region = Column(String(100), index=True)
+    city = Column(String(100), index=True)
+    ip_address = Column(String(45), index=True)
+    
+    # Additional metadata
+    properties = Column(JSON, default={})
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # Relationships
+    company = relationship("ClientCompany")
+    
+    # Indexes for performance
+    __table_args__ = (
+        Index('idx_payment_company', 'company_id', 'payment_status'),
+        Index('idx_payment_user', 'user_id', 'payment_status'),
+        Index('idx_payment_session', 'session_id', 'payment_status'),
+        Index('idx_payment_timing', 'payment_started_at', 'payment_completed_at'),
+        Index('idx_payment_wallet', 'wallet_address', 'chain_id'),
+        Index('idx_payment_transaction', 'transaction_hash'),
     )
 
 

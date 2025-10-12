@@ -1,6 +1,7 @@
 """API endpoints for wallet activity syncing."""
 
 from typing import Optional, Dict, Any
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from uuid import UUID
@@ -169,6 +170,75 @@ async def sync_company_wallets(
             status_code=500,
             detail=f"Error syncing company wallets: {str(e)}"
         )
+
+@router.post("/company/{company_id}/ytd")
+async def sync_company_wallets_ytd(
+    company_id: str,
+    current_user: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Sync all wallets for a company from the start of the current year (YTD)."""
+    try:
+        # Verify user owns the company
+        company = get_client_company_by_id(db, company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        start_of_year = datetime(datetime.now(timezone.utc).year, 1, 1, tzinfo=timezone.utc)
+        result = await wallet_activity_fetcher.fetch_all_wallet_activities(
+            company_id=company_id,
+            force_refresh=True,
+            start_date=start_of_year,
+            end_date=datetime.now(timezone.utc)
+        )
+        return {
+            "success": result.get("success", False),
+            "wallets_processed": result.get("wallets_processed", 0),
+            "total_transactions": result.get("total_transactions", 0),
+            "start_date": start_of_year.isoformat(),
+            "end_date": datetime.now(timezone.utc).isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error syncing YTD company wallets: {str(e)}")
+
+
+@router.post("/wallet/{wallet_id}/ytd")
+async def sync_wallet_ytd(
+    wallet_id: UUID,
+    current_user: PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Sync a single wallet from the start of the current year (YTD)."""
+    try:
+        # Verify user has access to this wallet
+        from ..crud.wallets import wallet_crud
+        wallet = wallet_crud.get_wallet_connection(db, wallet_id)
+        if not wallet:
+            raise HTTPException(status_code=404, detail="Wallet connection not found")
+        company = get_client_company_by_id(db, str(wallet.company_id))
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Access denied")
+
+        start_of_year = datetime(datetime.now(timezone.utc).year, 1, 1, tzinfo=timezone.utc)
+        result = await wallet_activity_fetcher.fetch_wallet_activities(
+            str(wallet_id),
+            force_refresh=True,
+            start_date=start_of_year,
+            end_date=datetime.now(timezone.utc)
+        )
+        return {
+            "success": result.get("success", False),
+            "transactions_fetched": result.get("transactions_fetched", 0),
+            "transactions_stored": result.get("transactions_stored", 0),
+            "start_date": start_of_year.isoformat(),
+            "end_date": datetime.now(timezone.utc).isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error syncing YTD wallet: {str(e)}")
 
 
 @router.get("/wallet/{wallet_id}/summary")

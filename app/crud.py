@@ -500,8 +500,107 @@ def handle_sdk_event(
         )
         logger.info(f"Processed page visit event for company {client_company_id}.")
 
+    # --- ADDED LOGIC FOR PAYMENT EVENTS ---
+    elif event_type in [SDKEventType.PAYMENT_STARTED, SDKEventType.PAYMENT_COMPLETED, 
+                       SDKEventType.PAYMENT_FAILED, SDKEventType.PAYMENT_CANCELLED]:
+        handle_payment_event(db, client_company_id, payload, event_timestamp)
+
     else:
         logger.warning(f"Received unhandled event type '{event_type}' for company {client_company_id}: {payload.dict()}. Skipping.")
+
+
+def handle_payment_event(
+    db: Session,
+    client_company_id: uuid.UUID,
+    payload: SDKEventPayload,
+    event_timestamp: datetime,
+):
+    """
+    Handles payment-related SDK events and creates/updates payment sessions.
+    """
+    from .crud.payments import create_payment_session, update_payment_session
+    from .core.geolocation import geolocation_service
+    from .. import schemas
+    
+    # Extract payment data from payload
+    payment_id = payload.properties.get("payment_id")
+    if not payment_id:
+        logger.warning(f"Payment event from company {client_company_id} missing payment_id. Skipping.")
+        return
+    
+    # Determine payment status based on event type
+    if payload.type == SDKEventType.PAYMENT_STARTED:
+        payment_status = schemas.PaymentStatus.PENDING
+    elif payload.type == SDKEventType.PAYMENT_COMPLETED:
+        payment_status = schemas.PaymentStatus.COMPLETED
+    elif payload.type == SDKEventType.PAYMENT_FAILED:
+        payment_status = schemas.PaymentStatus.FAILED
+    elif payload.type == SDKEventType.PAYMENT_CANCELLED:
+        payment_status = schemas.PaymentStatus.CANCELLED
+    else:
+        logger.warning(f"Unknown payment event type: {payload.type}")
+        return
+    
+    # Check if payment session already exists
+    from .. import models
+    existing_payment = db.query(models.PaymentSession).filter(
+        models.PaymentSession.payment_id == payment_id
+    ).first()
+    
+    if existing_payment:
+        # Update existing payment session
+        update_data = schemas.PaymentSessionUpdate(
+            payment_status=payment_status,
+            payment_amount=payload.properties.get("payment_amount"),
+            payment_currency=payload.properties.get("payment_currency"),
+            payment_method=payload.properties.get("payment_method"),
+            wallet_address=payload.wallet_address or payload.properties.get("wallet_address"),
+            chain_id=payload.chain_id or payload.properties.get("chain_id"),
+            transaction_hash=payload.transaction_hash or payload.properties.get("transaction_hash"),
+            contract_address=payload.contract_address or payload.properties.get("contract_address"),
+            properties=payload.properties
+        )
+        
+        updated_payment = update_payment_session(db, payment_id, update_data)
+        if updated_payment:
+            logger.info(f"Updated payment session {payment_id} to status {payment_status} for company {client_company_id}.")
+        else:
+            logger.error(f"Failed to update payment session {payment_id} for company {client_company_id}.")
+    else:
+        # Create new payment session
+        payment_data = schemas.PaymentSessionCreate(
+            company_id=client_company_id,
+            user_id=payload.user_id or payload.anonymous_id or "anonymous",
+            session_id=payload.session_id or "unknown",
+            payment_id=payment_id,
+            payment_status=payment_status,
+            payment_amount=payload.properties.get("payment_amount"),
+            payment_currency=payload.properties.get("payment_currency"),
+            payment_method=payload.properties.get("payment_method"),
+            wallet_address=payload.wallet_address or payload.properties.get("wallet_address"),
+            chain_id=payload.chain_id or payload.properties.get("chain_id"),
+            transaction_hash=payload.transaction_hash or payload.properties.get("transaction_hash"),
+            contract_address=payload.contract_address or payload.properties.get("contract_address"),
+            payment_started_at=event_timestamp,
+            page_url=payload.properties.get("page_url"),
+            referrer=payload.properties.get("referrer"),
+            user_agent=payload.properties.get("user_agent"),
+            properties=payload.properties
+        )
+        
+        # Get geolocation data if available
+        geolocation_data = None
+        if hasattr(payload, 'ip_address') and payload.ip_address:
+            try:
+                geolocation_data = geolocation_service.get_location_data(payload.ip_address)
+            except Exception as e:
+                logger.warning(f"Failed to get geolocation data: {e}")
+        
+        created_payment = create_payment_session(db, payment_data, geolocation_data)
+        if created_payment:
+            logger.info(f"Created payment session {payment_id} with status {payment_status} for company {client_company_id}.")
+        else:
+            logger.error(f"Failed to create payment session {payment_id} for company {client_company_id}.")
 
 
 def handle_web3_sdk_event(
