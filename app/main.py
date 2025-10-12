@@ -22,6 +22,7 @@ from .api import (
     wallets_router,
     user_engagement_router
 )
+from .api.payments import router as payments_router
 from .api.wallet_sync import router as wallet_sync_router
 # Web3 analytics are now integrated into the main dashboard
 
@@ -113,6 +114,7 @@ app.include_router(aggregation_router)
 app.include_router(wallets_router, prefix="/wallets", tags=["wallets"])
 app.include_router(wallet_sync_router, tags=["wallet-sync"])
 app.include_router(user_engagement_router)
+app.include_router(payments_router, tags=["payments"])
 # Web3 analytics are now integrated into the main dashboard
 
 

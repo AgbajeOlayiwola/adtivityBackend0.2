@@ -28,7 +28,9 @@ class WalletActivityFetcher:
         self, 
         wallet_connection_id: str,
         days_back: int = 30,
-        force_refresh: bool = False
+        force_refresh: bool = False,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
     ) -> Dict[str, Any]:
         """
         Fetch and store wallet activities for a specific wallet connection.
@@ -72,9 +74,9 @@ class WalletActivityFetcher:
                         'transactions_fetched': 0
                     }
             
-            # Calculate date range (use a longer period to catch more transactions)
-            end_date = datetime.now(timezone.utc)
-            start_date = end_date - timedelta(days=max(days_back, 30))  # At least 30 days
+            # Calculate date range (use provided range if given)
+            end_date = end_date or datetime.now(timezone.utc)
+            start_date = start_date or (end_date - timedelta(days=max(days_back, 30)))  # At least 30 days
             
             logger.info(f"Fetching activities for wallet {wallet.wallet_address} from {start_date} to {end_date}")
             
@@ -194,7 +196,9 @@ class WalletActivityFetcher:
         self, 
         company_id: Optional[str] = None,
         days_back: int = 30,
-        force_refresh: bool = False
+        force_refresh: bool = False,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
     ) -> Dict[str, Any]:
         """
         Fetch activities for all wallet connections.
@@ -234,7 +238,7 @@ class WalletActivityFetcher:
             for wallet in wallets:
                 try:
                     result = await self.fetch_wallet_activities(
-                        str(wallet.id), days_back, force_refresh
+                        str(wallet.id), days_back, force_refresh, start_date, end_date
                     )
                     
                     if result['success']:

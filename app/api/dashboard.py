@@ -1513,3 +1513,220 @@ async def web3_contract_analytics(
             "avg_interactions_per_wallet": round(len(contract_events) / len(unique_wallets), 2) if unique_wallets else 0
         }
     }
+
+
+# ====================================================================================
+# --- Payment Analytics Endpoints ---
+# ====================================================================================
+
+@router.get("/analytics/payments/overview")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@log_sensitive_operations("payment_analytics_overview")
+async def payment_analytics_overview(
+    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Get comprehensive payment analytics overview."""
+    # Resolve company IDs owned by user
+    if company_id:
+        company = crud.get_client_company_by_id(db, company_id=company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized for this company")
+        company_ids = [str(company_id)]
+    else:
+        company_ids = [str(c.id) for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
+        if not company_ids:
+            return {
+                "total_payments": 0,
+                "completed_payments": 0,
+                "failed_payments": 0,
+                "pending_payments": 0,
+                "cancelled_payments": 0,
+                "completion_rate": 0.0,
+                "total_revenue": 0.0,
+                "average_payment_amount": 0.0,
+                "payment_methods_breakdown": {},
+                "currency_breakdown": {},
+                "chain_breakdown": {},
+                "recent_payments": [],
+                "conversion_funnel": {"started": 0, "completed": 0, "failed": 0},
+                "period": {
+                    "start_date": None,
+                    "end_date": None,
+                    "days": days
+                }
+            }
+
+    # Calculate date range
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+    
+    # Get payment analytics for each company
+    all_analytics = []
+    for cid in company_ids:
+        analytics = crud.payments.get_payment_analytics(db, uuid.UUID(cid), start_date, end_date)
+        all_analytics.append(analytics)
+    
+    # Aggregate analytics across all companies
+    total_payments = sum(a["total_payments"] for a in all_analytics)
+    completed_payments = sum(a["completed_payments"] for a in all_analytics)
+    failed_payments = sum(a["failed_payments"] for a in all_analytics)
+    pending_payments = sum(a["pending_payments"] for a in all_analytics)
+    cancelled_payments = sum(a["cancelled_payments"] for a in all_analytics)
+    
+    completion_rate = (completed_payments / total_payments * 100) if total_payments > 0 else 0.0
+    
+    # Aggregate revenue metrics
+    total_revenue = sum(a["total_revenue"] for a in all_analytics)
+    all_completed_with_amount = [a for a in all_analytics if a["completed_payments"] > 0]
+    average_payment_amount = sum(a["average_payment_amount"] for a in all_completed_with_amount) / len(all_completed_with_amount) if all_completed_with_amount else 0.0
+    
+    # Aggregate breakdowns
+    payment_methods_breakdown = {}
+    currency_breakdown = {}
+    chain_breakdown = {}
+    
+    for analytics in all_analytics:
+        for method, count in analytics["payment_methods_breakdown"].items():
+            payment_methods_breakdown[method] = payment_methods_breakdown.get(method, 0) + count
+        for currency, count in analytics["currency_breakdown"].items():
+            currency_breakdown[currency] = currency_breakdown.get(currency, 0) + count
+        for chain, count in analytics["chain_breakdown"].items():
+            chain_breakdown[chain] = chain_breakdown.get(chain, 0) + count
+    
+    # Get recent payments (last 20 across all companies)
+    all_recent_payments = []
+    for analytics in all_analytics:
+        all_recent_payments.extend(analytics["recent_payments"])
+    
+    recent_payments = sorted(all_recent_payments, key=lambda x: x.payment_started_at, reverse=True)[:20]
+    
+    # Conversion funnel
+    conversion_funnel = {
+        "started": total_payments,
+        "completed": completed_payments,
+        "failed": failed_payments
+    }
+    
+    return {
+        "total_payments": total_payments,
+        "completed_payments": completed_payments,
+        "failed_payments": failed_payments,
+        "pending_payments": pending_payments,
+        "cancelled_payments": cancelled_payments,
+        "completion_rate": round(completion_rate, 2),
+        "total_revenue": float(total_revenue),
+        "average_payment_amount": float(average_payment_amount),
+        "payment_methods_breakdown": payment_methods_breakdown,
+        "currency_breakdown": currency_breakdown,
+        "chain_breakdown": chain_breakdown,
+        "recent_payments": [schemas.PaymentSessionResponse.from_orm(p) for p in recent_payments],
+        "conversion_funnel": conversion_funnel,
+        "period": {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "days": days
+        }
+    }
+
+
+@router.get("/analytics/payments/conversion-funnel")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@log_sensitive_operations("payment_conversion_funnel")
+async def payment_conversion_funnel(
+    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Get detailed payment conversion funnel analysis."""
+    # Resolve company IDs owned by user
+    if company_id:
+        company = crud.get_client_company_by_id(db, company_id=company_id)
+        if not company or company.platform_user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not authorized for this company")
+        company_ids = [str(company_id)]
+    else:
+        company_ids = [str(c.id) for c in crud.get_client_companies_by_platform_user(db, current_user.id)]
+        if not company_ids:
+            return {
+                "conversion_funnel": {"started": 0, "completed": 0, "failed": 0, "cancelled": 0},
+                "conversion_rates": {
+                    "started_to_completed": 0.0,
+                    "started_to_failed": 0.0,
+                    "started_to_cancelled": 0.0,
+                    "completion_rate": 0.0
+                },
+                "funnel_stages": []
+            }
+
+    # Calculate date range
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - timedelta(days=days)
+    
+    # Get payment analytics for each company
+    all_analytics = []
+    for cid in company_ids:
+        analytics = crud.payments.get_payment_analytics(db, uuid.UUID(cid), start_date, end_date)
+        all_analytics.append(analytics)
+    
+    # Aggregate funnel data
+    total_started = sum(a["conversion_funnel"]["started"] for a in all_analytics)
+    total_completed = sum(a["conversion_funnel"]["completed"] for a in all_analytics)
+    total_failed = sum(a["conversion_funnel"]["failed"] for a in all_analytics)
+    total_cancelled = sum(a["cancelled_payments"] for a in all_analytics)
+    
+    conversion_funnel = {
+        "started": total_started,
+        "completed": total_completed,
+        "failed": total_failed,
+        "cancelled": total_cancelled
+    }
+    
+    # Calculate conversion rates
+    if total_started == 0:
+        conversion_rates = {
+            "started_to_completed": 0.0,
+            "started_to_failed": 0.0,
+            "started_to_cancelled": 0.0,
+            "completion_rate": 0.0
+        }
+    else:
+        conversion_rates = {
+            "started_to_completed": round((total_completed / total_started) * 100, 2),
+            "started_to_failed": round((total_failed / total_started) * 100, 2),
+            "started_to_cancelled": round((total_cancelled / total_started) * 100, 2),
+            "completion_rate": round((total_completed / total_started) * 100, 2)
+        }
+    
+    # Create funnel stages
+    funnel_stages = [
+        {
+            "stage": "Payment Started",
+            "count": total_started,
+            "percentage": 100.0
+        },
+        {
+            "stage": "Payment Completed",
+            "count": total_completed,
+            "percentage": conversion_rates["started_to_completed"]
+        },
+        {
+            "stage": "Payment Failed",
+            "count": total_failed,
+            "percentage": conversion_rates["started_to_failed"]
+        },
+        {
+            "stage": "Payment Cancelled",
+            "count": total_cancelled,
+            "percentage": conversion_rates["started_to_cancelled"]
+        }
+    ]
+    
+    return {
+        "conversion_funnel": conversion_funnel,
+        "conversion_rates": conversion_rates,
+        "funnel_stages": funnel_stages
+    }
