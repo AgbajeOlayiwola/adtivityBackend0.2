@@ -1514,6 +1514,37 @@ async def web3_contract_analytics(
         }
     }
 
+@router.get("/analytics/web3/wallet/{wallet_address}/calculated-balance")
+@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
+@log_sensitive_operations("web3_wallet_calculated_balance")
+async def get_wallet_calculated_balance(
+    wallet_address: str = Path(..., description="Wallet address to calculate balance for"),
+    network: str = Query("ethereum", description="Blockchain network"),
+    days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
+    include_tokens: bool = Query(True, description="Include ERC-20 net changes"),
+    current_user: models.PlatformUser = Depends(get_current_platform_user),
+    db: Session = Depends(get_db)
+):
+    """Calculate wallet balance deltas from transaction history (inflow - outflow - gas)."""
+    try:
+        from ..core.blockchain_explorer_service import BlockchainExplorerService
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - timedelta(days=days)
+        explorer_service = BlockchainExplorerService()
+        result = await explorer_service.calculate_balance_from_transactions(
+            wallet_address=wallet_address,
+            network=network,
+            start_date=start_date,
+            end_date=end_date,
+            include_tokens=include_tokens
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error calculating wallet balance from transactions: {str(e)}"
+        )
+
 
 # ====================================================================================
 # --- Payment Analytics Endpoints ---

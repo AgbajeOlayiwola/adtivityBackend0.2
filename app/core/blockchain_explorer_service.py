@@ -1159,6 +1159,155 @@ class BlockchainExplorerService:
         # but focused on ERC-20/ERC-721/ERC-1155 transfers
         pass
     
+    async def calculate_balance_from_transactions(
+        self,
+        wallet_address: str,
+        network: str = "ethereum",
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        include_tokens: bool = True,
+        limit: int = 1000
+    ) -> Dict[str, Any]:
+        """Calculate a wallet's balance data from historical transactions.
+        
+        Native: inflow - outflow - gas (for sender)
+        Tokens: per token_address, inflow - outflow
+        """
+        try:
+            transactions = await self.fetch_wallet_transactions(
+                wallet_address=wallet_address,
+                network=network,
+                limit=limit
+            )
+            if not transactions:
+                return {
+                    "wallet_address": wallet_address,
+                    "network": network,
+                    "native": {"inflow": 0.0, "outflow": 0.0, "gas": 0.0, "balance": 0.0},
+                    "tokens": [],
+                    "timespan": {
+                        "start_date": start_date.isoformat() if start_date else None,
+                        "end_date": end_date.isoformat() if end_date else None
+                    }
+                }
+            
+            # Filter by time window if provided
+            if start_date or end_date:
+                filtered: List[Dict[str, Any]] = []
+                for tx in transactions:
+                    ts = tx.get('timestamp')
+                    if not ts:
+                        continue
+                    if getattr(ts, 'tzinfo', None) is None:
+                        ts = ts.replace(tzinfo=timezone.utc)
+                    if start_date and ts < start_date:
+                        continue
+                    if end_date and ts > end_date:
+                        continue
+                    filtered.append(tx)
+                transactions = filtered
+            
+            inflow_native = Decimal('0')
+            outflow_native = Decimal('0')
+            gas_native = Decimal('0')
+            token_deltas: Dict[str, Decimal] = {}
+            token_meta: Dict[str, Dict[str, Any]] = {}
+            
+            wallet_lower = wallet_address.lower()
+            for tx in transactions:
+                from_addr = (tx.get('from_address') or '').lower()
+                to_addr = (tx.get('to_address') or '').lower()
+                value = tx.get('value')
+                try:
+                    value_dec = Decimal(str(value)) if value is not None else Decimal('0')
+                except Exception:
+                    value_dec = Decimal('0')
+                
+                token_addr = (tx.get('token_address') or '').lower()
+                tx_type = (tx.get('transaction_type') or '').lower()
+                is_token_transfer = bool(token_addr) or tx_type in {'token_transfer', 'erc20', 'erc721', 'erc1155'}
+                
+                if not is_token_transfer:
+                    if to_addr == wallet_lower and from_addr != wallet_lower:
+                        inflow_native += value_dec
+                    if from_addr == wallet_lower and to_addr != wallet_lower:
+                        outflow_native += value_dec
+                    if from_addr == wallet_lower:
+                        gas_used = tx.get('gas_used')
+                        gas_price = tx.get('gas_price')
+                        try:
+                            gas_used_int = int(gas_used) if gas_used is not None else 0
+                            gas_price_int = int(gas_price) if gas_price is not None else 0
+                            if gas_used_int and gas_price_int:
+                                gas_eth = Decimal(gas_used_int) * Decimal(gas_price_int) / Decimal(10**18)
+                                gas_native += gas_eth
+                        except Exception:
+                            gas_fee_native = tx.get('gas_fee_native')
+                            if gas_fee_native is not None:
+                                try:
+                                    gas_native += Decimal(str(gas_fee_native))
+                                except Exception:
+                                    pass
+                
+                if include_tokens and is_token_transfer and token_addr:
+                    token_amount = tx.get('amount')
+                    try:
+                        token_amount_dec = Decimal(str(token_amount)) if token_amount is not None else Decimal('0')
+                    except Exception:
+                        token_amount_dec = Decimal('0')
+                    if token_addr not in token_deltas:
+                        token_deltas[token_addr] = Decimal('0')
+                        token_meta[token_addr] = {
+                            'token_address': token_addr,
+                            'token_symbol': tx.get('token_symbol') or '',
+                            'token_name': tx.get('token_name') or ''
+                        }
+                    if to_addr == wallet_lower and from_addr != wallet_lower:
+                        token_deltas[token_addr] += token_amount_dec
+                    if from_addr == wallet_lower and to_addr != wallet_lower:
+                        token_deltas[token_addr] -= token_amount_dec
+            
+            native_balance = inflow_native - outflow_native - gas_native
+            tokens_list = []
+            if include_tokens and token_deltas:
+                for addr, delta in token_deltas.items():
+                    meta = token_meta.get(addr, {})
+                    tokens_list.append({
+                        'token_address': addr,
+                        'symbol': meta.get('token_symbol', ''),
+                        'name': meta.get('token_name', ''),
+                        'net_change': float(delta)
+                    })
+            
+            return {
+                "wallet_address": wallet_address,
+                "network": network,
+                "native": {
+                    "inflow": float(inflow_native),
+                    "outflow": float(outflow_native),
+                    "gas": float(gas_native),
+                    "balance": float(native_balance)
+                },
+                "tokens": tokens_list,
+                "timespan": {
+                    "start_date": start_date.isoformat() if start_date else None,
+                    "end_date": end_date.isoformat() if end_date else None
+                }
+            }
+        except Exception as e:
+            logger.error(f"Error calculating balance from transactions: {e}")
+            return {
+                "wallet_address": wallet_address,
+                "network": network,
+                "native": {"inflow": 0.0, "outflow": 0.0, "gas": 0.0, "balance": 0.0},
+                "tokens": [],
+                "timespan": {
+                    "start_date": start_date.isoformat() if start_date else None,
+                    "end_date": end_date.isoformat() if end_date else None
+                },
+                "error": str(e)
+            }
+    
     async def get_wallet_balance(self, wallet_address: str, network: str = "ethereum") -> Dict[str, Any]:
         """Get wallet balance and token holdings."""
         try:
