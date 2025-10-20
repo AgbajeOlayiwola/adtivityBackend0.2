@@ -106,11 +106,17 @@ class WalletCRUD:
         db: Session, 
         wallet_id: uuid.UUID
     ) -> bool:
-        """Delete a wallet connection."""
+        """Delete a wallet connection and all associated activities."""
         db_wallet = self.get_wallet_connection(db, wallet_id)
         if not db_wallet:
             return False
         
+        # First, delete all associated wallet activities to avoid foreign key constraint violation
+        db.query(WalletActivity).filter(
+            WalletActivity.wallet_connection_id == wallet_id
+        ).delete()
+        
+        # Then delete the wallet connection
         db.delete(db_wallet)
         db.commit()
         return True
@@ -630,6 +636,18 @@ class WalletActivityCRUD:
                 for date, data in daily_flow.items()
             ]
         }
+    
+    def delete_wallet_activities(
+        self, 
+        db: Session, 
+        wallet_connection_id: uuid.UUID
+    ) -> int:
+        """Delete all wallet activities for a specific wallet connection."""
+        deleted_count = db.query(WalletActivity).filter(
+            WalletActivity.wallet_connection_id == wallet_connection_id
+        ).delete()
+        db.commit()
+        return deleted_count
 
 
 # Create instances
