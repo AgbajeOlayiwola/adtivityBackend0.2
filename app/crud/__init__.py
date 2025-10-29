@@ -41,6 +41,7 @@ from .regions import (
     get_user_locations
 )
 from .user_engagement import user_engagement_crud
+from . import payments
 
 
 __all__ = [
@@ -89,4 +90,7 @@ __all__ = [
     
     # User Engagement
     "user_engagement_crud",
+    
+    # Payments
+    "payments",
 ] 

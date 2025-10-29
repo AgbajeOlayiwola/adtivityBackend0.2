@@ -305,7 +305,7 @@ class Web3Event(Base):
     user_id = Column(String, nullable=False)
     event_name = Column(String, nullable=False)
     wallet_address = Column(String, nullable=False, index=True)
-    chain_id = Column(String, nullable=False, index=True)
+    chain_id = Column(String, nullable=True, index=True)  # Made nullable for flexibility
     transaction_hash = Column(String, nullable=True, index=True)
     contract_address = Column(String, nullable=True, index=True)
     properties = Column(JSON, default={})

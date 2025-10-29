@@ -27,6 +27,7 @@ anyio==4.2.0
 #Added python-jose to resolve the 'ModuleNotFoundError'.
 python-jose==3.3.0
 passlib==1.7.4
+bcrypt==3.2.2
 
 ##Optional Extras
 python-multipart==0.0.20

@@ -13,6 +13,13 @@ from ..crud.user_engagement import user_engagement_crud
 router = APIRouter(prefix="/user-engagement", tags=["User Engagement"])
 
 
+def ensure_timezone_aware(dt: datetime) -> datetime:
+    """Ensure datetime is timezone-aware (UTC if naive)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 @router.post("/sessions/", response_model=schemas.UserSessionResponse, status_code=status.HTTP_201_CREATED)
 async def create_user_session(
     session_data: schemas.UserSessionCreate,
@@ -72,6 +79,10 @@ async def get_user_analytics(
     db: Session = Depends(get_db)
 ) -> schemas.UserAnalyticsResponse:
     """Get comprehensive user analytics for all companies owned by the authenticated platform user."""
+    # Ensure timezone awareness
+    start_date = ensure_timezone_aware(start_date)
+    end_date = ensure_timezone_aware(end_date)
+    
     # Get all companies owned by the user
     companies = db.query(models.ClientCompany).filter(
         models.ClientCompany.platform_user_id == current_user.id
@@ -142,6 +153,10 @@ async def get_company_user_analytics(
     db: Session = Depends(get_db)
 ) -> schemas.UserAnalyticsResponse:
     """Get user analytics for a specific company."""
+    # Ensure timezone awareness
+    start_date = ensure_timezone_aware(start_date)
+    end_date = ensure_timezone_aware(end_date)
+    
     # Verify user owns this company
     company = db.query(models.ClientCompany).filter(
         models.ClientCompany.id == company_id,
@@ -172,6 +187,10 @@ async def get_user_engagement_dashboard(
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     
+    # Ensure timezone awareness
+    start_date = ensure_timezone_aware(start_date)
+    end_date = ensure_timezone_aware(end_date)
+    
     return user_engagement_crud.get_engagement_dashboard_data(db, company_id, start_date, end_date)
 
 
@@ -185,6 +204,10 @@ async def get_user_engagement_metrics(
     db: Session = Depends(get_db)
 ) -> List[schemas.UserEngagementMetrics]:
     """Get detailed engagement metrics for top users in a specific company."""
+    # Ensure timezone awareness
+    start_date = ensure_timezone_aware(start_date)
+    end_date = ensure_timezone_aware(end_date)
+    
     # Verify user owns this company
     company = db.query(models.ClientCompany).filter(
         models.ClientCompany.id == company_id,
@@ -207,6 +230,10 @@ async def get_engagement_time_series(
     db: Session = Depends(get_db)
 ) -> List[schemas.UserEngagementTimeSeries]:
     """Get time series data for user engagement in a specific company."""
+    # Ensure timezone awareness
+    start_date = ensure_timezone_aware(start_date)
+    end_date = ensure_timezone_aware(end_date)
+    
     # Verify user owns this company
     company = db.query(models.ClientCompany).filter(
         models.ClientCompany.id == company_id,
@@ -254,6 +281,10 @@ async def get_new_users(
     db: Session = Depends(get_db)
 ) -> List[schemas.UserEngagementMetrics]:
     """Get new users for a specific company in a time period."""
+    # Ensure timezone awareness
+    start_date = ensure_timezone_aware(start_date)
+    end_date = ensure_timezone_aware(end_date)
+    
     # Verify user owns this company
     company = db.query(models.ClientCompany).filter(
         models.ClientCompany.id == company_id,
@@ -279,6 +310,10 @@ async def get_average_engagement_time(
     db: Session = Depends(get_db)
 ) -> dict:
     """Get average engagement time metrics for a specific company."""
+    # Ensure timezone awareness
+    start_date = ensure_timezone_aware(start_date)
+    end_date = ensure_timezone_aware(end_date)
+    
     # Verify user owns this company
     company = db.query(models.ClientCompany).filter(
         models.ClientCompany.id == company_id,

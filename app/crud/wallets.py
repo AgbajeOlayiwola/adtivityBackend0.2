@@ -211,37 +211,8 @@ class WalletActivityCRUD:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None
     ) -> Dict[str, Any]:
-        """Get analytics for a wallet connection."""
-        query = db.query(WalletActivity).filter(
-            WalletActivity.wallet_connection_id == wallet_connection_id
-        )
-        
-        if start_date:
-            query = query.filter(WalletActivity.timestamp >= start_date)
-        if end_date:
-            query = query.filter(WalletActivity.timestamp <= end_date)
-        
-        activities = query.all()
-        
-        if not activities:
-            return {
-                "total_transactions": 0,
-                "total_volume_usd": Decimal('0'),
-                "total_inflow_usd": Decimal('0'),
-                "total_outflow_usd": Decimal('0'),
-                "net_flow_usd": Decimal('0'),
-                "unique_tokens": 0,
-                "networks": [],
-                "transaction_types": {},
-                "daily_activity": [],
-                "top_tokens": [],
-                "top_addresses": [],
-                "gas_spent_usd": Decimal('0'),
-                "first_transaction": None,
-                "last_transaction": None
-            }
-        
-        # Get wallet connection to determine wallet address
+        """Get analytics for a wallet connection using optimized database aggregations."""
+        # Get wallet connection first to determine wallet address
         wallet_connection = db.query(WalletConnection).filter(
             WalletConnection.id == wallet_connection_id
         ).first()
@@ -266,113 +237,165 @@ class WalletActivityCRUD:
         
         wallet_address = wallet_connection.wallet_address.lower()
         
-        # Calculate analytics
-        total_transactions = len(activities)
+        # Build base query with filters
+        base_query = db.query(WalletActivity).filter(
+            WalletActivity.wallet_connection_id == wallet_connection_id
+        )
         
-        # Calculate volume as inflow + outflow (actual wallet activity)
+        if start_date:
+            base_query = base_query.filter(WalletActivity.timestamp >= start_date)
+        if end_date:
+            base_query = base_query.filter(WalletActivity.timestamp <= end_date)
+        
+        # Use database aggregations for counts and sums (much faster)
+        total_transactions = base_query.count()
+        
+        if total_transactions == 0:
+            return {
+                "total_transactions": 0,
+                "total_volume_usd": Decimal('0'),
+                "total_inflow_usd": Decimal('0'),
+                "total_outflow_usd": Decimal('0'),
+                "net_flow_usd": Decimal('0'),
+                "unique_tokens": 0,
+                "networks": [],
+                "transaction_types": {},
+                "daily_activity": [],
+                "top_tokens": [],
+                "top_addresses": [],
+                "gas_spent_usd": Decimal('0'),
+                "first_transaction": None,
+                "last_transaction": None
+            }
+        
+        # Aggregate unique tokens and networks using database
+        unique_tokens = db.query(func.count(func.distinct(WalletActivity.token_address))).filter(
+            WalletActivity.wallet_connection_id == wallet_connection_id,
+            WalletActivity.token_address.isnot(None)
+        )
+        if start_date:
+            unique_tokens = unique_tokens.filter(WalletActivity.timestamp >= start_date)
+        if end_date:
+            unique_tokens = unique_tokens.filter(WalletActivity.timestamp <= end_date)
+        unique_tokens = unique_tokens.scalar() or 0
+        
+        # Get distinct networks
+        networks_query = db.query(func.distinct(WalletActivity.network)).filter(
+            WalletActivity.wallet_connection_id == wallet_connection_id
+        )
+        if start_date:
+            networks_query = networks_query.filter(WalletActivity.timestamp >= start_date)
+        if end_date:
+            networks_query = networks_query.filter(WalletActivity.timestamp <= end_date)
+        networks = [row[0] for row in networks_query.all() if row[0]]
+        
+        # Calculate inflow/outflow using database aggregations (only fetch what we need)
+        activities = base_query.with_entities(
+            WalletActivity.from_address,
+            WalletActivity.to_address,
+            WalletActivity.amount_usd
+        ).all()
+        
         total_volume_usd = Decimal('0')
         total_inflow_usd = Decimal('0')
         total_outflow_usd = Decimal('0')
         
-        for activity in activities:
-            from_address = (activity.from_address or '').lower() if activity.from_address else ''
-            to_address = (activity.to_address or '').lower() if activity.to_address else ''
-            amount_usd = activity.amount_usd or Decimal('0')
+        for from_addr, to_addr, amount_usd in activities:
+            from_address = (from_addr or '').lower() if from_addr else ''
+            to_address = (to_addr or '').lower() if to_addr else ''
+            amount = amount_usd or Decimal('0')
             
             if from_address == wallet_address and to_address != wallet_address:
-                # Outgoing transaction (wallet is sender)
-                total_outflow_usd += amount_usd
-                total_volume_usd += amount_usd
+                total_outflow_usd += amount
+                total_volume_usd += amount
             elif to_address == wallet_address and from_address != wallet_address:
-                # Incoming transaction (wallet is receiver)
-                total_inflow_usd += amount_usd
-                total_volume_usd += amount_usd
-            # Self-transactions are not counted in volume as they don't represent actual flow
+                total_inflow_usd += amount
+                total_volume_usd += amount
         
         net_flow_usd = total_inflow_usd - total_outflow_usd
         
-        unique_tokens = len(set(
-            activity.token_address for activity in activities 
-            if activity.token_address
-        ))
-        networks = list(set(activity.network for activity in activities))
+        # Now fetch full activities only for detailed analytics (optimize with selective fields)
+        full_activities = base_query.with_entities(
+            WalletActivity.from_address,
+            WalletActivity.to_address,
+            WalletActivity.amount_usd,
+            WalletActivity.transaction_type,
+            WalletActivity.timestamp,
+            WalletActivity.token_symbol,
+            WalletActivity.gas_fee_usd
+        ).all()
         
-        # Transaction types
+        # Single pass through activities for efficiency
         transaction_types = {}
-        for activity in activities:
-            tx_type = activity.transaction_type
-            transaction_types[tx_type] = transaction_types.get(tx_type, 0) + 1
-        
-        # Daily activity with inflow/outflow
         daily_activity = {}
-        for activity in activities:
-            date_key = activity.timestamp.date().isoformat()
-            if date_key not in daily_activity:
-                daily_activity[date_key] = {
-                    "transactions": 0, 
-                    "volume_usd": Decimal('0'),
-                    "inflow_usd": Decimal('0'),
-                    "outflow_usd": Decimal('0'),
-                    "net_flow_usd": Decimal('0')
-                }
-            
-            daily_activity[date_key]["transactions"] += 1
-            
-            # Calculate inflow/outflow for this activity
-            from_address = (activity.from_address or '').lower() if activity.from_address else ''
-            to_address = (activity.to_address or '').lower() if activity.to_address else ''
-            amount_usd = activity.amount_usd or Decimal('0')
-            
-            if from_address == wallet_address and to_address != wallet_address:
-                # Outgoing transaction (wallet is sender)
-                daily_activity[date_key]["outflow_usd"] += amount_usd
-                daily_activity[date_key]["volume_usd"] += amount_usd  # Add to volume
-            elif to_address == wallet_address and from_address != wallet_address:
-                # Incoming transaction (wallet is receiver)
-                daily_activity[date_key]["inflow_usd"] += amount_usd
-                daily_activity[date_key]["volume_usd"] += amount_usd  # Add to volume
-            # Self-transactions are not counted in volume as they don't represent actual flow
-            
-            daily_activity[date_key]["net_flow_usd"] = (
-                daily_activity[date_key]["inflow_usd"] - daily_activity[date_key]["outflow_usd"]
-            )
-        
-        # Top tokens (based on actual wallet activity - inflow + outflow)
         token_volumes = {}
-        for activity in activities:
-            if activity.token_symbol and activity.amount_usd:
-                from_address = (activity.from_address or '').lower() if activity.from_address else ''
-                to_address = (activity.to_address or '').lower() if activity.to_address else ''
-                amount_usd = activity.amount_usd or Decimal('0')
+        gas_spent_usd = Decimal('0')
+        timestamps = []
+        
+        for from_addr, to_addr, amount_usd, tx_type, timestamp, token_symbol, gas_fee in full_activities:
+            from_address = (from_addr or '').lower() if from_addr else ''
+            to_address = (to_addr or '').lower() if to_addr else ''
+            amount = amount_usd or Decimal('0')
+            
+            # Transaction types
+            if tx_type:
+                transaction_types[tx_type] = transaction_types.get(tx_type, 0) + 1
+            
+            # Track timestamps
+            if timestamp:
+                timestamps.append(timestamp)
                 
-                # Only count tokens that represent actual wallet activity
+                # Daily activity
+                date_key = timestamp.date().isoformat()
+                if date_key not in daily_activity:
+                    daily_activity[date_key] = {
+                        "transactions": 0,
+                        "volume_usd": Decimal('0'),
+                        "inflow_usd": Decimal('0'),
+                        "outflow_usd": Decimal('0'),
+                        "net_flow_usd": Decimal('0')
+                    }
+                
+                daily_activity[date_key]["transactions"] += 1
+                
+                if from_address == wallet_address and to_address != wallet_address:
+                    daily_activity[date_key]["outflow_usd"] += amount
+                    daily_activity[date_key]["volume_usd"] += amount
+                elif to_address == wallet_address and from_address != wallet_address:
+                    daily_activity[date_key]["inflow_usd"] += amount
+                    daily_activity[date_key]["volume_usd"] += amount
+                
+                daily_activity[date_key]["net_flow_usd"] = (
+                    daily_activity[date_key]["inflow_usd"] - daily_activity[date_key]["outflow_usd"]
+                )
+            
+            # Token volumes
+            if token_symbol and amount:
                 if (from_address == wallet_address and to_address != wallet_address) or \
                    (to_address == wallet_address and from_address != wallet_address):
-                    token = activity.token_symbol
-                    token_volumes[token] = token_volumes.get(token, Decimal('0')) + amount_usd
+                    token_volumes[token_symbol] = token_volumes.get(token_symbol, Decimal('0')) + amount
+            
+            # Gas spent
+            if gas_fee:
+                gas_spent_usd += gas_fee
         
+        # Top tokens
         top_tokens = [
             {"symbol": token, "volume_usd": float(volume)}
             for token, volume in sorted(token_volumes.items(), key=lambda x: x[1], reverse=True)[:10]
         ]
         
-        # Gas spent
-        gas_spent_usd = sum(
-            activity.gas_fee_usd or Decimal('0') for activity in activities
-        )
-        
         # First and last transactions
-        timestamps = [activity.timestamp for activity in activities]
         first_transaction = min(timestamps) if timestamps else None
         last_transaction = max(timestamps) if timestamps else None
         
-        # Calculate address interaction rankings
+        # Calculate address interaction rankings (use already fetched data)
         address_interactions = {}
         try:
-            for activity in activities:
-                from_address = (activity.from_address or '').lower() if activity.from_address else ''
-                to_address = (activity.to_address or '').lower() if activity.to_address else ''
-                amount_usd = activity.amount_usd or Decimal('0')
+            for from_addr, to_addr, amount_usd, tx_type, timestamp, token_symbol, gas_fee in full_activities:
+                from_address = (from_addr or '').lower() if from_addr else ''
+                to_address = (to_addr or '').lower() if to_addr else ''
+                amount = amount_usd or Decimal('0')
                 
                 # Track interactions with other addresses (not self)
                 if from_address == wallet_address and to_address != wallet_address:
@@ -388,9 +411,9 @@ class WalletActivityCRUD:
                             'net_flow': Decimal('0')
                         }
                     address_interactions[to_address]['outgoing_count'] += 1
-                    address_interactions[to_address]['outgoing_volume'] += amount_usd
+                    address_interactions[to_address]['outgoing_volume'] += amount
                     address_interactions[to_address]['total_interactions'] += 1
-                    address_interactions[to_address]['net_flow'] -= amount_usd
+                    address_interactions[to_address]['net_flow'] -= amount
                     
                 elif to_address == wallet_address and from_address != wallet_address:
                     # Incoming from this address
@@ -405,11 +428,11 @@ class WalletActivityCRUD:
                             'net_flow': Decimal('0')
                         }
                     address_interactions[from_address]['incoming_count'] += 1
-                    address_interactions[from_address]['incoming_volume'] += amount_usd
+                    address_interactions[from_address]['incoming_volume'] += amount
                     address_interactions[from_address]['total_interactions'] += 1
-                    address_interactions[from_address]['net_flow'] += amount_usd
+                    address_interactions[from_address]['net_flow'] += amount
         except Exception as e:
-            # If there's an error, set empty list
+            # If there's an error, set empty dict
             address_interactions = {}
         
         # Sort addresses by total interactions (most frequent first)

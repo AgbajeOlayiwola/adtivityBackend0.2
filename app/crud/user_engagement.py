@@ -247,8 +247,7 @@ class UserEngagementCRUD:
             func.count(func.distinct(UserEngagement.page_url)).label('unique_pages'),
             func.min(UserEngagement.event_timestamp).label('first_seen'),
             func.max(UserEngagement.event_timestamp).label('last_seen'),
-            func.max(UserEngagement.country).label('country'),
-            func.max(UserEngagement.device_type).label('device_type')
+            func.max(UserEngagement.country).label('country')
         ).filter(
             and_(
                 UserEngagement.company_id == uuid.UUID(company_id),
@@ -300,7 +299,7 @@ class UserEngagementCRUD:
                 last_seen=stat.last_seen,
                 is_new_user=is_new_user,
                 country=stat.country,
-                device_type=stat.device_type
+                device_type=None  # Device type not tracked in UserEngagement model
             ))
         
         return metrics
@@ -373,20 +372,9 @@ class UserEngagementCRUD:
         # Get top users
         top_users = self.get_user_engagement_metrics(db, company_id, start_date, end_date, limit=10)
         
-        # Get device breakdown
-        device_breakdown = db.query(
-            UserEngagement.device_type,
-            func.count(func.distinct(UserEngagement.user_id)).label('user_count')
-        ).filter(
-            and_(
-                UserEngagement.company_id == uuid.UUID(company_id),
-                UserEngagement.event_timestamp >= start_date,
-                UserEngagement.event_timestamp <= end_date,
-                UserEngagement.device_type.isnot(None)
-            )
-        ).group_by(UserEngagement.device_type).all()
-        
-        device_dict = {d.device_type: d.user_count for d in device_breakdown}
+        # Device breakdown - not available in UserEngagement model
+        # Could be extracted from event_properties JSON if stored there
+        device_dict = {}
         
         # Get country breakdown
         country_breakdown = db.query(
@@ -415,7 +403,7 @@ class UserEngagementCRUD:
             )
         ).group_by(func.extract('hour', UserEngagement.event_timestamp)).all()
         
-        hourly_dict = {int(h.hour): h.user_count for h in hourly_breakdown}
+        hourly_dict = {str(int(h.hour)): h.user_count for h in hourly_breakdown}
         
         return UserEngagementDashboardResponse(
             summary=summary,
