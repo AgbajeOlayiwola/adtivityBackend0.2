@@ -29,6 +29,11 @@ class UserEngagementService:
             event_name = event_data.get("event_name") or event_data.get("eventName", "unknown")
             event_timestamp = event_data.get("timestamp", datetime.now(timezone.utc))
             
+            # Convert timestamp string to datetime if needed
+            if isinstance(event_timestamp, str):
+                from dateutil import parser
+                event_timestamp = parser.parse(event_timestamp)
+            
             if not user_id or not session_id:
                 return {"status": "skipped", "reason": "missing_user_or_session"}
             
@@ -159,7 +164,7 @@ class UserEngagementService:
         # Create new summary
         summary_data = UserActivitySummaryCreate(
             company_id=uuid.UUID(company_id),
-            date=summary_date,
+            summary_date=summary_date,  # Fixed: was 'date' should be 'summary_date'
             hour=hour
         )
         

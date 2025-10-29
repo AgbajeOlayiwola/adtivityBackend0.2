@@ -763,19 +763,56 @@ async def web3_analytics_overview(
     end_date = datetime.now(timezone.utc)
     start_date = end_date - timedelta(days=days)
     
-    # Get all Web3 events for the period (SDK events)
-    web3_events = db.query(models.Web3Event).filter(
+    # Optimize: Use count queries first to check if there's data
+    company_uuids = [uuid.UUID(cid) for cid in company_ids]
+    web3_count = db.query(func.count(models.Web3Event.id)).filter(
         and_(
-            models.Web3Event.client_company_id.in_([uuid.UUID(cid) for cid in company_ids]),
+            models.Web3Event.client_company_id.in_(company_uuids),
+            models.Web3Event.timestamp >= start_date,
+            models.Web3Event.timestamp <= end_date
+        )
+    ).scalar()
+    
+    wallet_activities_count = db.query(func.count(models.WalletActivity.id)).join(models.WalletConnection).filter(
+        and_(
+            models.WalletConnection.company_id.in_(company_uuids),
+            models.WalletActivity.timestamp >= start_date,
+            models.WalletActivity.timestamp <= end_date
+        )
+    ).scalar()
+    
+    # Get only necessary fields for Web3 events (not full objects)
+    web3_events = db.query(
+        models.Web3Event.wallet_address,
+        models.Web3Event.contract_address,
+        models.Web3Event.chain_id,
+        models.Web3Event.event_name,
+        models.Web3Event.transaction_hash,
+        models.Web3Event.timestamp,
+        models.Web3Event.properties
+    ).filter(
+        and_(
+            models.Web3Event.client_company_id.in_(company_uuids),
             models.Web3Event.timestamp >= start_date,
             models.Web3Event.timestamp <= end_date
         )
     ).all()
     
-    # Get wallet activities for the period (real blockchain data with USD values)
-    wallet_activities = db.query(models.WalletActivity).join(models.WalletConnection).filter(
+    # Get only necessary fields for wallet activities (not full objects)
+    wallet_activities = db.query(
+        models.WalletActivity.from_address,
+        models.WalletActivity.to_address,
+        models.WalletActivity.token_address,
+        models.WalletActivity.network,
+        models.WalletActivity.transaction_type,
+        models.WalletActivity.amount_usd,
+        models.WalletActivity.gas_fee_usd,
+        models.WalletActivity.inflow_usd,
+        models.WalletActivity.outflow_usd,
+        models.WalletActivity.timestamp
+    ).join(models.WalletConnection).filter(
         and_(
-            models.WalletConnection.company_id.in_([uuid.UUID(cid) for cid in company_ids]),
+            models.WalletConnection.company_id.in_(company_uuids),
             models.WalletActivity.timestamp >= start_date,
             models.WalletActivity.timestamp <= end_date
         )
@@ -817,38 +854,38 @@ async def web3_analytics_overview(
     recent_activity = []
     
     # Process wallet activities first (real blockchain data with USD values)
-    for activity in wallet_activities:
+    # Now activities are tuples: (from_address, to_address, token_address, network, transaction_type, amount_usd, gas_fee_usd, inflow_usd, outflow_usd, timestamp)
+    for from_addr, to_addr, token_addr, network, tx_type, amount_usd, gas_usd, inflow_usd, outflow_usd, timestamp in wallet_activities:
         # Only include receive and transfer transactions for volume calculation
-        # Exclude token_balance, token_transfer, nft_hold, etc.
-        if activity.transaction_type not in ['receive', 'transfer']:
+        if tx_type not in ['receive', 'transfer']:
             continue
             
         # Track unique entities from wallet activities
-        if activity.from_address:
-            unique_wallets.add(activity.from_address)
-        if activity.to_address:
-            unique_wallets.add(activity.to_address)
-        if activity.token_address:
-            unique_contracts.add(activity.token_address)
-        if activity.network:
-            unique_chains.add(activity.network)
+        if from_addr:
+            unique_wallets.add(from_addr)
+        if to_addr:
+            unique_wallets.add(to_addr)
+        if token_addr:
+            unique_contracts.add(token_addr)
+        if network:
+            unique_chains.add(network)
         
         # Use real USD values from wallet activities
-        event_amount = float(activity.amount_usd or 0)
-        event_gas = float(activity.gas_fee_usd or 0)
+        event_amount = float(amount_usd or 0)
+        event_gas = float(gas_usd or 0)
         
         # Add to totals
         total_amount += event_amount
         total_gas_spent += event_gas
         
         # Add to inflow/outflow totals for balance calculation
-        if hasattr(activity, 'inflow_usd') and activity.inflow_usd:
-            total_inflow += float(activity.inflow_usd)
-        if hasattr(activity, 'outflow_usd') and activity.outflow_usd:
-            total_outflow += float(activity.outflow_usd)
+        if inflow_usd:
+            total_inflow += float(inflow_usd)
+        if outflow_usd:
+            total_outflow += float(outflow_usd)
         
         # Add to wallet activity tracking
-        wallet_addr = activity.from_address or activity.to_address
+        wallet_addr = from_addr or to_addr
         if wallet_addr:
             if wallet_addr not in wallet_activity:
                 wallet_activity[wallet_addr] = {
@@ -863,15 +900,15 @@ async def web3_analytics_overview(
             wallet_activity[wallet_addr]["interaction_count"] += 1
             wallet_activity[wallet_addr]["total_amount"] += event_amount
             wallet_activity[wallet_addr]["total_gas_spent"] += event_gas
-            if activity.token_address:
-                wallet_activity[wallet_addr]["contracts_interacted"].add(activity.token_address)
-            wallet_activity[wallet_addr]["chains_used"].add(activity.network)
+            if token_addr:
+                wallet_activity[wallet_addr]["contracts_interacted"].add(token_addr)
+            wallet_activity[wallet_addr]["chains_used"].add(network)
         
         # Add to contract activity tracking
-        if activity.token_address:
-            if activity.token_address not in contract_activity:
-                contract_activity[activity.token_address] = {
-                    "contract_address": activity.token_address,
+        if token_addr:
+            if token_addr not in contract_activity:
+                contract_activity[token_addr] = {
+                    "contract_address": token_addr,
                     "interaction_count": 0,
                     "total_amount": 0,
                     "total_gas_spent": 0,
@@ -879,18 +916,18 @@ async def web3_analytics_overview(
                     "chains_used": set()
                 }
             
-            contract_activity[activity.token_address]["interaction_count"] += 1
-            contract_activity[activity.token_address]["total_amount"] += event_amount
-            contract_activity[activity.token_address]["total_gas_spent"] += event_gas
+            contract_activity[token_addr]["interaction_count"] += 1
+            contract_activity[token_addr]["total_amount"] += event_amount
+            contract_activity[token_addr]["total_gas_spent"] += event_gas
             if wallet_addr:
-                contract_activity[activity.token_address]["unique_wallets"].add(wallet_addr)
-            contract_activity[activity.token_address]["chains_used"].add(activity.network)
+                contract_activity[token_addr]["unique_wallets"].add(wallet_addr)
+            contract_activity[token_addr]["chains_used"].add(network)
         
         # Add to chain activity tracking
-        if activity.network:
-            if activity.network not in chain_activity:
-                chain_activity[activity.network] = {
-                    "chain_id": activity.network,
+        if network:
+            if network not in chain_activity:
+                chain_activity[network] = {
+                    "chain_id": network,
                     "interaction_count": 0,
                     "total_amount": 0,
                     "total_gas_spent": 0,
@@ -898,40 +935,41 @@ async def web3_analytics_overview(
                     "unique_contracts": set()
                 }
             
-            chain_activity[activity.network]["interaction_count"] += 1
-            chain_activity[activity.network]["total_amount"] += event_amount
-            chain_activity[activity.network]["total_gas_spent"] += event_gas
+            chain_activity[network]["interaction_count"] += 1
+            chain_activity[network]["total_amount"] += event_amount
+            chain_activity[network]["total_gas_spent"] += event_gas
             if wallet_addr:
-                chain_activity[activity.network]["unique_wallets"].add(wallet_addr)
-            if activity.token_address:
-                chain_activity[activity.network]["unique_contracts"].add(activity.token_address)
+                chain_activity[network]["unique_wallets"].add(wallet_addr)
+            if token_addr:
+                chain_activity[network]["unique_contracts"].add(token_addr)
         
         # Add to recent activity
         recent_activity.append({
-            "event_name": activity.transaction_type or "transaction",
+            "event_name": tx_type or "transaction",
             "wallet_address": wallet_addr,
-            "contract_address": activity.token_address,
-            "chain_id": activity.network,
+            "contract_address": token_addr,
+            "chain_id": network,
             "amount": event_amount,
             "gas_spent": event_gas,
-            "timestamp": activity.timestamp.isoformat()
+            "timestamp": timestamp.isoformat() if timestamp else None
         })
     
     # Process Web3 events (SDK events) for additional tracking
-    for event in web3_events:
+    # web3_events are tuples: (wallet_address, contract_address, chain_id, event_name, transaction_hash, timestamp, properties)
+    for wallet_addr, contract_addr, chain_id, event_name, tx_hash, timestamp, properties in web3_events:
         # Track unique entities
-        if event.wallet_address:
-            unique_wallets.add(event.wallet_address)
-        if event.contract_address:
-            unique_contracts.add(event.contract_address)
-        if event.chain_id:
-            unique_chains.add(event.chain_id)
+        if wallet_addr:
+            unique_wallets.add(wallet_addr)
+        if contract_addr:
+            unique_contracts.add(contract_addr)
+        if chain_id:
+            unique_chains.add(chain_id)
         
         # Track wallet activity
-        if event.wallet_address:
-            if event.wallet_address not in wallet_activity:
-                wallet_activity[event.wallet_address] = {
-                    "wallet_address": event.wallet_address,
+        if wallet_addr:
+            if wallet_addr not in wallet_activity:
+                wallet_activity[wallet_addr] = {
+                    "wallet_address": wallet_addr,
                     "interaction_count": 0,
                     "total_amount": 0,
                     "total_gas_spent": 0,
@@ -939,15 +977,17 @@ async def web3_analytics_overview(
                     "chains_used": set()
                 }
             
-            wallet_activity[event.wallet_address]["interaction_count"] += 1
-            wallet_activity[event.wallet_address]["contracts_interacted"].add(event.contract_address)
-            wallet_activity[event.wallet_address]["chains_used"].add(event.chain_id)
+            wallet_activity[wallet_addr]["interaction_count"] += 1
+            if contract_addr:
+                wallet_activity[wallet_addr]["contracts_interacted"].add(contract_addr)
+            if chain_id:
+                wallet_activity[wallet_addr]["chains_used"].add(chain_id)
         
         # Track contract activity
-        if event.contract_address:
-            if event.contract_address not in contract_activity:
-                contract_activity[event.contract_address] = {
-                    "contract_address": event.contract_address,
+        if contract_addr:
+            if contract_addr not in contract_activity:
+                contract_activity[contract_addr] = {
+                    "contract_address": contract_addr,
                     "interaction_count": 0,
                     "total_amount": 0,
                     "total_gas_spent": 0,
@@ -955,15 +995,17 @@ async def web3_analytics_overview(
                     "chains_used": set()
                 }
             
-            contract_activity[event.contract_address]["interaction_count"] += 1
-            contract_activity[event.contract_address]["unique_wallets"].add(event.wallet_address)
-            contract_activity[event.contract_address]["chains_used"].add(event.chain_id)
+            contract_activity[contract_addr]["interaction_count"] += 1
+            if wallet_addr:
+                contract_activity[contract_addr]["unique_wallets"].add(wallet_addr)
+            if chain_id:
+                contract_activity[contract_addr]["chains_used"].add(chain_id)
         
         # Track chain activity
-        if event.chain_id:
-            if event.chain_id not in chain_activity:
-                chain_activity[event.chain_id] = {
-                    "chain_id": event.chain_id,
+        if chain_id:
+            if chain_id not in chain_activity:
+                chain_activity[chain_id] = {
+                    "chain_id": chain_id,
                     "interaction_count": 0,
                     "total_amount": 0,
                     "total_gas_spent": 0,
@@ -971,22 +1013,23 @@ async def web3_analytics_overview(
                     "unique_contracts": set()
                 }
             
-            chain_activity[event.chain_id]["interaction_count"] += 1
-            chain_activity[event.chain_id]["unique_wallets"].add(event.wallet_address)
-            if event.contract_address:
-                chain_activity[event.chain_id]["unique_contracts"].add(event.contract_address)
+            chain_activity[chain_id]["interaction_count"] += 1
+            if wallet_addr:
+                chain_activity[chain_id]["unique_wallets"].add(wallet_addr)
+            if contract_addr:
+                chain_activity[chain_id]["unique_contracts"].add(contract_addr)
         
         # Extract amount and gas from properties
         event_amount = 0
         event_gas = 0
         
-        if event.properties:
+        if properties:
             # Extract amount from various possible fields
             amount_fields = ['amount', 'value', 'token_amount', 'eth_amount', 'usd_value', 'transaction_value']
             for field in amount_fields:
-                if field in event.properties:
+                if field in properties:
                     try:
-                        event_amount = float(event.properties[field])
+                        event_amount = float(properties[field])
                         break
                     except (ValueError, TypeError):
                         continue
@@ -994,18 +1037,18 @@ async def web3_analytics_overview(
             # Extract gas information
             gas_fields = ['gas_fee', 'gas_fee_usd', 'gas_cost', 'gas_cost_usd', 'transaction_fee', 'fee_usd']
             for field in gas_fields:
-                if field in event.properties:
+                if field in properties:
                     try:
-                        event_gas = float(event.properties[field])
+                        event_gas = float(properties[field])
                         break
                     except (ValueError, TypeError):
                         continue
             
             # If no direct gas field, try to calculate from gas_used and gas_price
-            if event_gas == 0 and 'gas_used' in event.properties and 'gas_price' in event.properties:
+            if event_gas == 0 and 'gas_used' in properties and 'gas_price' in properties:
                 try:
-                    gas_used = float(event.properties['gas_used'])
-                    gas_price = float(event.properties['gas_price'])
+                    gas_used = float(properties['gas_used'])
+                    gas_price = float(properties['gas_price'])
                     # Convert from wei to ETH (gas_price is typically in wei)
                     event_gas = (gas_used * gas_price) / 1e18
                 except (ValueError, TypeError):
@@ -1016,25 +1059,25 @@ async def web3_analytics_overview(
         total_gas_spent += event_gas
         
         # Add to wallet/contract/chain amounts
-        if event.wallet_address and event.wallet_address in wallet_activity:
-            wallet_activity[event.wallet_address]["total_amount"] += event_amount
-            wallet_activity[event.wallet_address]["total_gas_spent"] += event_gas
-        if event.contract_address and event.contract_address in contract_activity:
-            contract_activity[event.contract_address]["total_amount"] += event_amount
-            contract_activity[event.contract_address]["total_gas_spent"] += event_gas
-        if event.chain_id and event.chain_id in chain_activity:
-            chain_activity[event.chain_id]["total_amount"] += event_amount
-            chain_activity[event.chain_id]["total_gas_spent"] += event_gas
+        if wallet_addr and wallet_addr in wallet_activity:
+            wallet_activity[wallet_addr]["total_amount"] += event_amount
+            wallet_activity[wallet_addr]["total_gas_spent"] += event_gas
+        if contract_addr and contract_addr in contract_activity:
+            contract_activity[contract_addr]["total_amount"] += event_amount
+            contract_activity[contract_addr]["total_gas_spent"] += event_gas
+        if chain_id and chain_id in chain_activity:
+            chain_activity[chain_id]["total_amount"] += event_amount
+            chain_activity[chain_id]["total_gas_spent"] += event_gas
         
         # Collect recent activity (last 20 events)
         if len(recent_activity) < 20:
             recent_activity.append({
-                "wallet_address": event.wallet_address,
-                "contract_address": event.contract_address,
-                "chain_id": event.chain_id,
-                "event_name": event.event_name,
-                "transaction_hash": event.transaction_hash,
-                "timestamp": event.timestamp.isoformat(),
+                "wallet_address": wallet_addr,
+                "contract_address": contract_addr,
+                "chain_id": chain_id,
+                "event_name": event_name,
+                "transaction_hash": tx_hash,
+                "timestamp": timestamp.isoformat() if timestamp else None,
                 "amount": event_amount,
                 "gas_spent": event_gas
             })

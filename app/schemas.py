@@ -317,7 +317,7 @@ class Web3EventBase(BaseModel):
     user_id: str
     event_name: str
     wallet_address: str
-    chain_id: str
+    chain_id: Optional[str] = None  # Made optional for flexibility
     transaction_hash: Optional[str] = None
     contract_address: Optional[str] = None
     properties: Dict[str, Any] = {}
