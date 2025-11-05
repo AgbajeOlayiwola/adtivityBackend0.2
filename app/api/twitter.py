@@ -1,7 +1,7 @@
 """Twitter API endpoints for managing Twitter integration."""
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
 from uuid import UUID
@@ -13,7 +13,7 @@ from ..core.background_tasks import background_task_service
 from ..crud.twitter import twitter_crud
 from .. import crud
 from ..schemas import (
-    CompanyTwitterCreate, CompanyTwitterResponse, CompanyTwitterUpdate,
+    CompanyTwitterCreate, CompanyTwitterResponse, CompanyTwitterUpdate, CompanyTwitterPatch,
     TwitterTweetResponse, TwitterFollowerResponse, TwitterAnalyticsResponse,
     TwitterSyncRequest, TwitterSyncResponse, HashtagMentionResponse,
     MentionResponse, MentionAnalyticsResponse, MentionSearchRequest, MentionNotificationRequest,
@@ -115,6 +115,171 @@ async def update_twitter_account(
     twitter_account = twitter_crud.update_company_twitter(db, twitter_id, update_data)
     if not twitter_account:
         raise HTTPException(status_code=404, detail="Twitter account not found")
+    
+    # Convert to response schema with proper UUID handling
+    return CompanyTwitterResponse.from_orm(twitter_account)
+
+
+@router.patch("/accounts/{twitter_id}", response_model=CompanyTwitterResponse)
+async def patch_twitter_account(
+    twitter_id: UUID,
+    patch_data: CompanyTwitterPatch,
+    db: Session = Depends(get_db),
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """PATCH update Twitter account - allows partial updates including twitter_handle and twitter_user_id.
+    
+    This endpoint supports two scenarios:
+    
+    1. **Username Change (Same Account)**: User changes their Twitter username (@oldname -> @newname)
+       - The twitter_user_id remains the same
+       - Old tweets/followers are preserved
+       - Example: PATCH with {"twitter_handle": "@newname"}
+    
+    2. **Account Change (Different Account)**: Company wants to switch to a different Twitter account
+       - The twitter_user_id changes to a different user
+       - Old tweets/followers/analytics are automatically deleted (they belong to the old account)
+       - Example: PATCH with {"twitter_handle": "@differentaccount"} where @differentaccount has different user_id
+    
+    When updating twitter_handle, the system will:
+    1. Validate the new handle via Twitter API
+    2. Check if it's already taken in our system
+    3. Detect if it's the same user (username change) or different user (account change)
+    4. Automatically clean up old data if switching to a different account
+    5. Fetch and update the latest profile data
+    """
+    # Get the existing Twitter account
+    twitter_account = twitter_crud.get_company_twitter(db, twitter_id)
+    if not twitter_account:
+        raise HTTPException(status_code=404, detail="Twitter account not found")
+    
+    # Update fields that are provided
+    update_dict = patch_data.model_dump(exclude_unset=True)
+    
+    if not update_dict:
+        # No fields to update
+        return CompanyTwitterResponse.from_orm(twitter_account)
+    
+    # Track if we're changing to a different Twitter account (different user)
+    is_changing_account = False
+    old_twitter_user_id = twitter_account.twitter_user_id
+    
+    # Update twitter_handle if provided (this is the @username)
+    if "twitter_handle" in update_dict and update_dict["twitter_handle"] is not None:
+        new_handle = update_dict["twitter_handle"].strip().lstrip("@")
+        
+        # Check if handle is different from current one
+        if new_handle.lower() != twitter_account.twitter_handle.lower():
+            # Validate the new Twitter handle via Twitter API
+            handle_validation = await twitter_service.validate_twitter_handle(new_handle)
+            
+            if not handle_validation["valid"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "Invalid Twitter handle",
+                        "error": handle_validation["error"],
+                        "suggestions": handle_validation["suggestions"],
+                        "handle": new_handle
+                    }
+                )
+            
+            # Check if this handle is already used by another CompanyTwitter record
+            existing_account = twitter_crud.get_company_twitter_by_handle(db, new_handle)
+            if existing_account and existing_account.id != twitter_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Twitter handle @{new_handle} is already associated with another account in our system"
+                )
+            
+            # Get Twitter profile data
+            user_data = handle_validation["user_data"]
+            new_twitter_user_id = user_data.id
+            
+            # Determine if this is the same account (username change) or different account
+            if patch_data.twitter_user_id:
+                # User explicitly provided twitter_user_id - use it
+                if user_data.id != patch_data.twitter_user_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Twitter handle @{new_handle} belongs to user ID {user_data.id}, but you provided {patch_data.twitter_user_id}. "
+                               f"These don't match. Please remove twitter_user_id to use the handle's actual user ID."
+                    )
+                new_twitter_user_id = patch_data.twitter_user_id
+            elif twitter_account.twitter_user_id:
+                # Check if new handle belongs to same user (username change) or different user (account change)
+                if user_data.id != twitter_account.twitter_user_id:
+                    # Different account - user is changing to a different Twitter account
+                    is_changing_account = True
+                    new_twitter_user_id = user_data.id
+                else:
+                    # Same account - just username change
+                    new_twitter_user_id = user_data.id
+            else:
+                # No existing twitter_user_id, so this is a new account assignment
+                new_twitter_user_id = user_data.id
+            
+            # Update the handle
+            twitter_account.twitter_handle = new_handle
+            
+            # Update profile data from Twitter API
+            twitter_account.twitter_user_id = new_twitter_user_id
+            twitter_account.followers_count = user_data.followers_count
+            twitter_account.following_count = user_data.following_count
+            twitter_account.tweets_count = user_data.tweets_count
+            twitter_account.profile_image_url = user_data.profile_image_url
+            twitter_account.verified = user_data.verified
+            if not twitter_account.description and user_data.description:
+                twitter_account.description = user_data.description
+    
+    # Update twitter_user_id if provided independently (without handle change)
+    if "twitter_user_id" in update_dict and update_dict["twitter_user_id"] is not None:
+        new_user_id = update_dict["twitter_user_id"]
+        
+        # Check if this is a different account
+        if twitter_account.twitter_user_id and new_user_id != twitter_account.twitter_user_id:
+            is_changing_account = True
+            old_twitter_user_id = twitter_account.twitter_user_id
+        
+        # Check if this twitter_user_id is already used by another CompanyTwitter record
+        existing_account = twitter_crud.get_company_twitter_by_twitter_user_id(
+            db, new_user_id
+        )
+        if existing_account and existing_account.id != twitter_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Twitter user ID {new_user_id} is already associated with another account in our system"
+            )
+        twitter_account.twitter_user_id = new_user_id
+    
+    # If changing to a different Twitter account, clean up old data
+    if is_changing_account and old_twitter_user_id:
+        # Delete old tweets, followers, and analytics for the old account
+        # This is necessary because they're linked to the CompanyTwitter record
+        # and should belong to the new account going forward
+        from ..models import TwitterTweet, TwitterFollower, TwitterAnalytics
+        
+        deleted_tweets = db.query(TwitterTweet).filter(
+            TwitterTweet.company_twitter_id == twitter_id
+        ).delete(synchronize_session=False)
+        
+        deleted_followers = db.query(TwitterFollower).filter(
+            TwitterFollower.company_twitter_id == twitter_id
+        ).delete(synchronize_session=False)
+        
+        deleted_analytics = db.query(TwitterAnalytics).filter(
+            TwitterAnalytics.company_twitter_id == twitter_id
+        ).delete(synchronize_session=False)
+    
+    # Update description if provided
+    if "description" in update_dict:
+        twitter_account.description = update_dict["description"]
+    
+    # Update last_updated timestamp
+    twitter_account.last_updated = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(twitter_account)
     
     # Convert to response schema with proper UUID handling
     return CompanyTwitterResponse.from_orm(twitter_account)
@@ -320,14 +485,37 @@ async def get_company_mentions(
 
 @router.get("/accounts/{twitter_id}/mentions/analytics")
 async def get_mention_analytics(
-    twitter_id: UUID,
+    twitter_id: str = Path(..., description="Twitter account UUID"),
     start_date: date = Query(...),
     end_date: date = Query(...),
     db: Session = Depends(get_db),
     current_user: PlatformUser = Depends(get_current_platform_user)
 ):
     """Get mention analytics for a company Twitter account within a date range in frontend-compatible format."""
-    analytics = twitter_crud.get_mention_analytics(db, twitter_id, start_date, end_date)
+    # Validate twitter_id is not "undefined" and is a valid UUID
+    if twitter_id == "undefined" or not twitter_id or twitter_id.strip() == "":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Twitter account ID is required",
+                "error": "The twitter_id parameter is missing or undefined. Please ensure the Twitter account is configured before accessing analytics.",
+                "hint": "You may need to create or link a Twitter account first using POST /twitter/accounts/"
+            }
+        )
+    
+    try:
+        twitter_id_uuid = UUID(twitter_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Invalid Twitter account ID format",
+                "error": f"The provided twitter_id '{twitter_id}' is not a valid UUID.",
+                "hint": "Please provide a valid UUID format (e.g., '550e8400-e29b-41d4-a716-446655440000')"
+            }
+        )
+    
+    analytics = twitter_crud.get_mention_analytics(db, twitter_id_uuid, start_date, end_date)
     
     # Transform to frontend-compatible format
     days_diff = (end_date - start_date).days + 1

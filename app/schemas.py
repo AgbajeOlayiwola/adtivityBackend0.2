@@ -659,6 +659,13 @@ class CompanyTwitterUpdate(BaseModel):
     description: str = None
 
 
+class CompanyTwitterPatch(BaseModel):
+    """PATCH update schema for Twitter account - allows partial updates including twitter_handle and twitter_user_id."""
+    twitter_handle: Optional[str] = None
+    twitter_user_id: Optional[str] = None
+    description: Optional[str] = None
+
+
 class CompanyTwitterResponse(CompanyTwitterBase):
     """Company Twitter account response schema."""
     id: str  # UUID as string
