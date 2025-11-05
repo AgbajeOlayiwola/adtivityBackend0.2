@@ -57,10 +57,31 @@ class TwitterCRUD:
         return db_twitter
     
     def delete_company_twitter(self, db: Session, twitter_id: UUID) -> Optional[str]:
-        """Delete company Twitter account and return company_id."""
+        """Delete company Twitter account and return company_id.
+        
+        This method deletes all related records (tweets, followers, analytics)
+        before deleting the company_twitter account to avoid foreign key constraint violations.
+        """
         db_twitter = self.get_company_twitter(db, twitter_id)
         if db_twitter:
             company_id = db_twitter.company_id
+            
+            # Delete all related tweets first
+            db.query(TwitterTweet).filter(
+                TwitterTweet.company_twitter_id == twitter_id
+            ).delete(synchronize_session=False)
+            
+            # Delete all related followers
+            db.query(TwitterFollower).filter(
+                TwitterFollower.company_twitter_id == twitter_id
+            ).delete(synchronize_session=False)
+            
+            # Delete all related analytics
+            db.query(TwitterAnalytics).filter(
+                TwitterAnalytics.company_twitter_id == twitter_id
+            ).delete(synchronize_session=False)
+            
+            # Now delete the company_twitter account
             db.delete(db_twitter)
             db.commit()
             return company_id
@@ -192,18 +213,26 @@ class TwitterCRUD:
             .all()
     
     def get_company_mentions(self, db: Session, company_twitter_id: UUID, limit: int = 100) -> List[TwitterTweet]:
-        """Get all mentions of a company (tweets that mention the company's handle)."""
+        """Get all tweets for a company.
+        
+        Note: This returns all tweets by the company. For true "mentions" 
+        (tweets FROM others that mention the company), we'd need to search
+        tweets from other users, which requires querying the Twitter API directly.
+        """
         return db.query(TwitterTweet)\
-            .filter(TwitterTweet.mentions.isnot(None))\
             .filter(TwitterTweet.company_twitter_id == company_twitter_id)\
             .order_by(desc(TwitterTweet.created_at))\
             .limit(limit)\
             .all()
     
     def get_mentions_by_date_range(self, db: Session, company_twitter_id: UUID, start_date: datetime, end_date: datetime) -> List[TwitterTweet]:
-        """Get mentions of a company within a date range."""
+        """Get mentions of a company within a date range.
+        
+        Note: This includes all tweets for the company in the date range.
+        For true "mentions" (tweets that mention the company), we'd need to search
+        tweets from other users, which requires a different approach.
+        """
         return db.query(TwitterTweet)\
-            .filter(TwitterTweet.mentions.isnot(None))\
             .filter(TwitterTweet.company_twitter_id == company_twitter_id)\
             .filter(TwitterTweet.created_at >= start_date)\
             .filter(TwitterTweet.created_at <= end_date)\
@@ -219,9 +248,10 @@ class TwitterCRUD:
         )
         
         total_mentions = len(mentions)
-        total_likes = sum(mention.like_count for mention in mentions)
-        total_retweets = sum(mention.retweet_count for mention in mentions)
-        total_replies = sum(mention.reply_count for mention in mentions)
+        # Handle None values by defaulting to 0
+        total_likes = sum(mention.like_count or 0 for mention in mentions)
+        total_retweets = sum(mention.retweet_count or 0 for mention in mentions)
+        total_replies = sum(mention.reply_count or 0 for mention in mentions)
         
         # Group by date
         mentions_by_date = {}
@@ -235,9 +265,9 @@ class TwitterCRUD:
                     'replies': 0
                 }
             mentions_by_date[date_key]['count'] += 1
-            mentions_by_date[date_key]['likes'] += mention.like_count
-            mentions_by_date[date_key]['retweets'] += mention.retweet_count
-            mentions_by_date[date_key]['replies'] += mention.reply_count
+            mentions_by_date[date_key]['likes'] += mention.like_count or 0
+            mentions_by_date[date_key]['retweets'] += mention.retweet_count or 0
+            mentions_by_date[date_key]['replies'] += mention.reply_count or 0
         
         return {
             'start_date': start_date,
