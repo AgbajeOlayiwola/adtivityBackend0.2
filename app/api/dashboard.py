@@ -1,6 +1,6 @@
 """Dashboard management endpoints."""
 
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
 from sqlalchemy.orm import Session
 import uuid
@@ -230,19 +230,37 @@ async def regenerate_api_key_for_company(
 
 @router.get("/all-events", response_model=List[schemas.Event])
 async def get_all_events(
+    company_id: Optional[uuid.UUID] = Query(None, description="Filter events by company ID. If not provided, returns events for all companies owned by the user."),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
 ) -> List[schemas.Event]:
-    """Get all standard (Web2) events for all client companies associated with the authenticated platform user."""
+    """Get all standard (Web2) events for all client companies associated with the authenticated platform user.
+    
+    If company_id is provided, only returns events for that specific company.
+    The frontend can use the company_id field in each event to group/filter events by company.
+    """
     import logging
     logger = logging.getLogger(__name__)
     
-    logger.info(f"🔍 get_all_events called for user: {current_user.id} ({current_user.email})")
+    logger.info(f"🔍 get_all_events called for user: {current_user.id} ({current_user.email}), company_id: {company_id}")
     
     try:
-        # Get all events for the user
-        events = crud.get_all_events_for_user(db=db, platform_user_id=current_user.id)
-        logger.info(f"✅ Found {len(events)} events for user {current_user.id}")
+        # If company_id is provided, validate that the user owns that company
+        if company_id:
+            company = crud.get_client_company_by_id(db, company_id=company_id)
+            if not company or company.platform_user_id != current_user.id:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Not authorized to view events for this company"
+                )
+        
+        # Get events for the user (optionally filtered by company_id)
+        events = crud.get_all_events_for_user(
+            db=db, 
+            platform_user_id=current_user.id,
+            company_id=company_id
+        )
+        logger.info(f"✅ Found {len(events)} events for user {current_user.id}" + (f" (filtered by company: {company_id})" if company_id else ""))
         
         # Log some details about the events
         if events:
@@ -250,6 +268,8 @@ async def get_all_events(
         
         return events
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Error in get_all_events: {e}")
         import traceback
