@@ -184,18 +184,43 @@ def handle_web3_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventP
     )
 
 
-def get_all_events_for_user(db: Session, platform_user_id: uuid.UUID):
+def get_all_events_for_user(db: Session, platform_user_id: uuid.UUID, company_id: Optional[uuid.UUID] = None):
     """
     Retrieves all standard events for a given platform user by first
     finding all the companies they own, and then fetching all events
     associated with those companies.
+    
+    Args:
+        db: Database session
+        platform_user_id: The platform user ID to get events for
+        company_id: Optional company ID to filter events. If provided, only returns events for that company.
     """
     import logging
     logger = logging.getLogger(__name__)
     
-    logger.info(f"🔍 get_all_events_for_user called for platform_user_id: {platform_user_id}")
+    logger.info(f"🔍 get_all_events_for_user called for platform_user_id: {platform_user_id}, company_id: {company_id}")
     
-    # 1. Get all company IDs for the authenticated user
+    # If company_id is provided, filter by that specific company
+    if company_id:
+        # Verify the user owns this company
+        company = db.query(ClientCompany).filter(
+            ClientCompany.id == company_id,
+            ClientCompany.platform_user_id == platform_user_id
+        ).first()
+        
+        if not company:
+            logger.warning(f"⚠️ Company {company_id} not found or not owned by user {platform_user_id}")
+            return []
+        
+        # Get events for this specific company
+        events = db.query(Event).filter(
+            Event.client_company_id == company_id
+        ).all()
+        
+        logger.info(f"✅ Found {len(events)} events for company {company_id}")
+        return events
+    
+    # Otherwise, get all company IDs for the authenticated user
     company_ids = db.query(ClientCompany.id).filter(
         ClientCompany.platform_user_id == platform_user_id
     ).all()
@@ -208,12 +233,12 @@ def get_all_events_for_user(db: Session, platform_user_id: uuid.UUID):
     
     logger.info(f"🏢 Company IDs: {[str(cid) for cid in company_ids]}")
     
-    # 2. If the user has no companies, return an empty list immediately
+    # If the user has no companies, return an empty list immediately
     if not company_ids:
         logger.warning(f"⚠️ No companies found for user {platform_user_id}, returning empty list")
         return []
 
-    # 3. Use the company IDs to query for all events
+    # Use the company IDs to query for all events
     events = db.query(Event).filter(
         Event.client_company_id.in_(company_ids)
     ).all()

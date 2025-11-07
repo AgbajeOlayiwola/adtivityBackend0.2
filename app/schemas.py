@@ -1,5 +1,5 @@
 from __future__ import annotations
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, validator, root_validator
 from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, date
 from enum import Enum
@@ -295,6 +295,7 @@ class Event(EventBase):
     """
     id: uuid.UUID
     client_company_id: uuid.UUID
+    company_id: Optional[uuid.UUID] = None  # Alias for client_company_id for convenience
     timestamp: datetime
     event_type: Union[SDKEventType, str]  # Allow both enum and string values
 
@@ -305,6 +306,14 @@ class Event(EventBase):
             # Convert to lowercase to match enum values
             return v.lower()
         return v
+    
+    @root_validator(skip_on_failure=True)
+    def set_company_id(cls, values):
+        """Set company_id from client_company_id if not provided."""
+        # Always set company_id from client_company_id if it exists
+        if 'client_company_id' in values and values.get('client_company_id') is not None:
+            values['company_id'] = values['client_company_id']
+        return values
 
     class Config:
         from_attributes = True
@@ -980,6 +989,41 @@ class HashtagSearchResponse(BaseModel):
     hashtag: str
     results_count: int
     tweets: List[Dict[str, Any]]
+
+
+# KOL Analysis Schemas
+class KOLAnalysisRequest(BaseModel):
+    """Request for KOL (Key Opinion Leader) analysis."""
+    username: str = Field(..., description="Twitter username to analyze (with or without @)")
+    max_tweets: int = Field(100, ge=10, le=100, description="Maximum number of user's tweets to fetch for engagement analysis")
+    max_mentions: int = Field(100, ge=10, le=100, description="Maximum number of mentions to fetch")
+
+
+class KOLTweetData(BaseModel):
+    """Tweet data for KOL analysis."""
+    tweet_id: str
+    text: str
+    created_at: str
+    author_username: Optional[str] = None
+    author_name: Optional[str] = None
+    author_verified: bool = False
+    retweet_count: int = 0
+    like_count: int = 0
+    reply_count: int = 0
+    quote_count: int = 0
+    hashtags: List[str] = []
+    mentions: List[str] = []
+
+
+class KOLAnalysisResponse(BaseModel):
+    """Response for KOL analysis - no data is saved to database."""
+    username: str
+    profile: TwitterProfileData
+    user_tweets: List[KOLTweetData] = []  # User's own tweets with engagement metrics
+    mentions: List[KOLTweetData] = []  # Tweets that mention the user
+    analysis_summary: Dict[str, Any] = {}
+    error: Optional[str] = None
+
 
 # ====================================================================================
 # --- Data Aggregation Schemas ---

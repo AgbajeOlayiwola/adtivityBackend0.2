@@ -546,6 +546,175 @@ class TwitterService:
             label = "neutral"
         
         return sentiment_score, label
+    
+    async def get_user_liked_tweets(self, user_id: str, max_results: int = 100) -> List[Dict]:
+        """Get tweets liked by a user.
+        
+        Note: This endpoint may require OAuth 1.0a User Context authentication depending on API access level.
+        For privacy reasons, many users' liked tweets may not be accessible via public API.
+        """
+        try:
+            # Twitter API v2 requires max_results between 5 and 100
+            if max_results < 5:
+                max_results = 5
+            elif max_results > 100:
+                max_results = 100
+            
+            # Make request with retry logic (uses Bearer token)
+            # Note: Liked tweets endpoint may require OAuth 1.0a User Context for some users
+            # This is a limitation of Twitter API - we'll attempt with Bearer token first
+            response = await self._make_request_with_retry(
+                f"{self.base_url}/users/{user_id}/liked_tweets",
+                params={
+                    "max_results": max_results,
+                    "tweet.fields": "id,text,created_at,public_metrics,author_id,entities",
+                    "expansions": "author_id",
+                    "user.fields": "id,username,name,verified,profile_image_url"
+                }
+            )
+            
+            if not response:
+                print(f"⚠️ Could not fetch liked tweets for user {user_id} (rate limited or failed)")
+                return []
+            
+            if response.status_code == 200:
+                data = response.json()
+                tweets = data.get("data", [])
+                users = {user["id"]: user for user in data.get("includes", {}).get("users", [])}
+                
+                results = []
+                for tweet in tweets:
+                    author = users.get(tweet.get("author_id"), {})
+                    metrics = tweet.get("public_metrics", {})
+                    
+                    # Extract hashtags and mentions from entities
+                    entities = tweet.get("entities", {})
+                    hashtags = []
+                    mentions = []
+                    
+                    if "hashtags" in entities:
+                        hashtags = [tag.get("tag") for tag in entities["hashtags"]]
+                    if "mentions" in entities:
+                        mentions = [mention.get("username") for mention in entities["mentions"]]
+                    
+                    tweet_result = {
+                        "tweet_id": tweet.get("id"),
+                        "text": tweet.get("text"),
+                        "created_at": tweet.get("created_at"),
+                        "author_id": tweet.get("author_id"),
+                        "author_username": author.get("username"),
+                        "author_name": author.get("name"),
+                        "author_verified": author.get("verified", False),
+                        "retweet_count": metrics.get("retweet_count", 0),
+                        "like_count": metrics.get("like_count", 0),
+                        "reply_count": metrics.get("reply_count", 0),
+                        "quote_count": metrics.get("quote_count", 0),
+                        "hashtags": hashtags,
+                        "mentions": mentions
+                    }
+                    results.append(tweet_result)
+                
+                return results
+            elif response.status_code == 401:
+                print(f"⚠️ Twitter API: Unauthorized - Liked tweets may require OAuth 1.0a User Context or may be private")
+                return []
+            elif response.status_code == 403:
+                print(f"⚠️ Twitter API: Forbidden - Liked tweets may not be accessible (privacy settings or API limitations)")
+                return []
+            elif response.status_code == 404:
+                print(f"⚠️ Twitter API: User {user_id} not found or liked tweets not accessible")
+                return []
+            else:
+                print(f"⚠️ Error fetching liked tweets: {response.status_code} - {response.text[:100]}")
+                return []
+                
+        except Exception as e:
+            print(f"⚠️ Error fetching liked tweets for user {user_id}: {e}")
+            return []
+    
+    async def get_user_mentions(self, username: str, max_results: int = 100) -> List[Dict]:
+        """Get tweets that mention a user (search for @username)."""
+        try:
+            # Clean username (remove @ if present)
+            clean_username = username.lstrip("@").strip()
+            
+            # Twitter API v2 requires max_results between 10 and 100 for search
+            if max_results < 10:
+                max_results = 10
+            elif max_results > 100:
+                max_results = 100
+            
+            # Make request with retry logic
+            response = await self._make_request_with_retry(
+                f"{self.base_url}/tweets/search/recent",
+                params={
+                    "query": f"@{clean_username}",
+                    "max_results": max_results,
+                    "tweet.fields": "id,text,created_at,public_metrics,author_id,entities,in_reply_to_user_id",
+                    "user.fields": "id,username,name,verified,profile_image_url",
+                    "expansions": "author_id"
+                }
+            )
+            
+            if not response:
+                print(f"⚠️ Could not fetch mentions for @{clean_username} (rate limited or failed)")
+                return []
+            
+            if response.status_code == 200:
+                data = response.json()
+                tweets = data.get("data", [])
+                users = {user["id"]: user for user in data.get("includes", {}).get("users", [])}
+                
+                results = []
+                for tweet in tweets:
+                    author = users.get(tweet.get("author_id"), {})
+                    metrics = tweet.get("public_metrics", {})
+                    
+                    # Extract hashtags and mentions
+                    entities = tweet.get("entities", {})
+                    hashtags = []
+                    mentions = []
+                    
+                    if "hashtags" in entities:
+                        hashtags = [tag.get("tag") for tag in entities["hashtags"]]
+                    if "mentions" in entities:
+                        mentions = [mention.get("username") for mention in entities["mentions"]]
+                    
+                    tweet_result = {
+                        "tweet_id": tweet.get("id"),
+                        "text": tweet.get("text"),
+                        "created_at": tweet.get("created_at"),
+                        "author_id": tweet.get("author_id"),
+                        "author_username": author.get("username"),
+                        "author_name": author.get("name"),
+                        "author_verified": author.get("verified", False),
+                        "retweet_count": metrics.get("retweet_count", 0),
+                        "like_count": metrics.get("like_count", 0),
+                        "reply_count": metrics.get("reply_count", 0),
+                        "quote_count": metrics.get("quote_count", 0),
+                        "hashtags": hashtags,
+                        "mentions": mentions
+                    }
+                    results.append(tweet_result)
+                
+                return results
+            elif response.status_code == 401:
+                print(f"❌ Twitter API: Unauthorized - Check your Bearer Token for mentions")
+                return []
+            elif response.status_code == 403:
+                print(f"❌ Twitter API: Forbidden - Check your API permissions for mentions")
+                return []
+            elif response.status_code == 429:
+                print(f"⚠️ Twitter API: Rate limit exceeded for mentions")
+                await self._handle_rate_limit_response(response)
+                return []
+            else:
+                print(f"❌ Twitter API Error {response.status_code} for mentions: {response.text[:100]}")
+                return []
+                
+        except Exception as e:
+            print(f"Error fetching mentions for @{username}: {e}")
+            return []
 
 
 # Global service instance

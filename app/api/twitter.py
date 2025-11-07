@@ -1,6 +1,7 @@
 """Twitter API endpoints for managing Twitter integration."""
 
 from typing import List, Optional
+from collections import Counter
 from fastapi import APIRouter, Depends, HTTPException, Query, Body, Path
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
@@ -18,7 +19,8 @@ from ..schemas import (
     TwitterSyncRequest, TwitterSyncResponse, HashtagMentionResponse,
     MentionResponse, MentionAnalyticsResponse, MentionSearchRequest, MentionNotificationRequest,
     TwitterUserSuggestion, TwitterHandleValidationRequest, TwitterHandleValidationResponse,
-    TwitterUserSearchRequest, TwitterUserSearchResponse, HashtagSearchRequest, HashtagSearchResponse
+    TwitterUserSearchRequest, TwitterUserSearchResponse, HashtagSearchRequest, HashtagSearchResponse,
+    KOLAnalysisRequest, KOLAnalysisResponse, KOLTweetData
 )
 from ..models import PlatformUser
 
@@ -872,6 +874,184 @@ async def stop_auto_sync(
         "message": "Auto sync stopped",
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+# KOL Analysis Endpoint
+@router.post("/kol/analyze", response_model=KOLAnalysisResponse)
+async def analyze_kol(
+    analysis_request: KOLAnalysisRequest,
+    current_user: PlatformUser = Depends(get_current_platform_user)
+):
+    """Analyze a Twitter user (KOL - Key Opinion Leader) without adding them to the company.
+    
+    This endpoint allows companies to search and analyze Twitter users to see:
+    - User profile information
+    - User's own tweets with total likes and engagement metrics
+    - Recent tweets that mention them
+    
+    No data is saved to the database - this is purely for analysis purposes.
+    """
+    try:
+        # Clean username
+        clean_username = analysis_request.username.lstrip("@").strip()
+        
+        if not clean_username:
+            raise HTTPException(status_code=400, detail="Username cannot be empty")
+        
+        # Get user profile
+        profile_data = await twitter_service.get_user_by_username(clean_username)
+        
+        if not profile_data or not profile_data.id:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Twitter user @{clean_username} not found"
+            )
+        
+        # Fetch user's tweets and mentions
+        user_tweets = []
+        mentions = []
+        errors = []
+        
+        # Fetch user's own tweets to analyze their engagement (likes they received)
+        try:
+            user_tweets_raw = await twitter_service.get_user_tweets(
+                profile_data.id,
+                max_results=analysis_request.max_tweets
+            )
+            user_tweets = [
+                KOLTweetData(
+                    tweet_id=tweet.tweet_id,
+                    text=tweet.text,
+                    created_at=tweet.created_at.isoformat() if tweet.created_at else "",
+                    author_username=clean_username,
+                    author_name=profile_data.name,
+                    author_verified=profile_data.verified,
+                    retweet_count=tweet.retweet_count,
+                    like_count=tweet.like_count,  # Total likes this tweet received
+                    reply_count=tweet.reply_count,
+                    quote_count=tweet.quote_count,
+                    hashtags=getattr(tweet, 'hashtags', []) or [],
+                    mentions=getattr(tweet, 'mentions', []) or []
+                )
+                for tweet in user_tweets_raw
+            ]
+        except Exception as e:
+            error_msg = f"Error fetching user tweets: {str(e)}"
+            errors.append(error_msg)
+            print(f"⚠️ {error_msg}")
+        
+        # Fetch mentions
+        try:
+            mentions_raw = await twitter_service.get_user_mentions(
+                clean_username,
+                max_results=analysis_request.max_mentions
+            )
+            mentions = [
+                KOLTweetData(
+                    tweet_id=tweet.get("tweet_id", ""),
+                    text=tweet.get("text", ""),
+                    created_at=tweet.get("created_at", ""),
+                    author_username=tweet.get("author_username"),
+                    author_name=tweet.get("author_name"),
+                    author_verified=tweet.get("author_verified", False),
+                    retweet_count=tweet.get("retweet_count", 0),
+                    like_count=tweet.get("like_count", 0),
+                    reply_count=tweet.get("reply_count", 0),
+                    quote_count=tweet.get("quote_count", 0),
+                    hashtags=tweet.get("hashtags", []),
+                    mentions=tweet.get("mentions", [])
+                )
+                for tweet in mentions_raw
+            ]
+        except Exception as e:
+            error_msg = f"Error fetching mentions: {str(e)}"
+            errors.append(error_msg)
+            print(f"⚠️ {error_msg}")
+        
+        # Calculate analysis summary
+        total_user_tweets = len(user_tweets)
+        total_mentions = len(mentions)
+        
+        # Calculate engagement metrics from user's own tweets (likes they received)
+        total_likes_received = sum(t.like_count for t in user_tweets)
+        total_retweets_received = sum(t.retweet_count for t in user_tweets)
+        total_replies_received = sum(t.reply_count for t in user_tweets)
+        total_quotes_received = sum(t.quote_count for t in user_tweets)
+        total_engagement = total_likes_received + total_retweets_received + total_replies_received + total_quotes_received
+        
+        avg_likes_per_tweet = total_likes_received / total_user_tweets if total_user_tweets > 0 else 0
+        avg_retweets_per_tweet = total_retweets_received / total_user_tweets if total_user_tweets > 0 else 0
+        avg_engagement_per_tweet = total_engagement / total_user_tweets if total_user_tweets > 0 else 0
+        
+        # Calculate engagement rate (engagement / followers)
+        engagement_rate = (total_engagement / profile_data.followers_count * 100) if profile_data.followers_count > 0 else 0
+        
+        # Calculate engagement metrics from mentions
+        total_likes_on_mentions = sum(t.like_count for t in mentions)
+        total_retweets_on_mentions = sum(t.retweet_count for t in mentions)
+        avg_engagement_mentions = (
+            (total_likes_on_mentions + total_retweets_on_mentions) / total_mentions
+            if total_mentions > 0 else 0
+        )
+        
+        # Extract common hashtags from user's tweets
+        all_hashtags = []
+        for tweet in user_tweets:
+            all_hashtags.extend(tweet.hashtags)
+        
+        hashtag_counts = Counter(all_hashtags)
+        top_hashtags = [{"hashtag": tag, "count": count} for tag, count in hashtag_counts.most_common(10)]
+        
+        # Find top performing tweets
+        top_tweets = sorted(user_tweets, key=lambda x: x.like_count, reverse=True)[:5]
+        top_tweets_summary = [
+            {
+                "tweet_id": t.tweet_id,
+                "text": t.text[:100] + "..." if len(t.text) > 100 else t.text,
+                "likes": t.like_count,
+                "retweets": t.retweet_count
+            }
+            for t in top_tweets
+        ]
+        
+        analysis_summary = {
+            "total_tweets_analyzed": total_user_tweets,
+            "total_mentions_fetched": total_mentions,
+            "profile_followers": profile_data.followers_count,
+            "profile_following": profile_data.following_count,
+            "profile_tweets": profile_data.tweets_count,
+            "profile_verified": profile_data.verified,
+            "total_likes_received": total_likes_received,
+            "total_retweets_received": total_retweets_received,
+            "total_replies_received": total_replies_received,
+            "total_quotes_received": total_quotes_received,
+            "total_engagement": total_engagement,
+            "avg_likes_per_tweet": round(avg_likes_per_tweet, 2),
+            "avg_retweets_per_tweet": round(avg_retweets_per_tweet, 2),
+            "avg_engagement_per_tweet": round(avg_engagement_per_tweet, 2),
+            "engagement_rate_percent": round(engagement_rate, 2),
+            "avg_engagement_mentions": round(avg_engagement_mentions, 2),
+            "top_hashtags": top_hashtags,
+            "top_performing_tweets": top_tweets_summary,
+            "errors": errors if errors else None
+        }
+        
+        return KOLAnalysisResponse(
+            username=clean_username,
+            profile=profile_data,
+            user_tweets=user_tweets,
+            mentions=mentions,
+            analysis_summary=analysis_summary,
+            error="; ".join(errors) if errors else None
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error analyzing KOL: {str(e)}"
+        )
 
 
 # Utility endpoint: get company's Twitter user ID by company UUID
