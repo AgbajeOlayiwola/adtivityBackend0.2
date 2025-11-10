@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from .background_tasks import background_task_service
 from .wallet_sync_service import wallet_sync_service
+from .event_cleanup_service import event_cleanup_service
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,10 @@ async def startup_tasks():
     
     # Start wallet auto-sync in background
     wallet_sync_task = asyncio.create_task(wallet_sync_service.start_auto_sync())
-    
+
+    # Start localhost event cleanup in background
+    event_cleanup_task = asyncio.create_task(event_cleanup_service.start_auto_cleanup())
+
     try:
         yield
     finally:
@@ -31,11 +35,13 @@ async def startup_tasks():
         # Stop auto-sync services
         background_task_service.stop_auto_sync()
         wallet_sync_service.stop_auto_sync()
-        
+        event_cleanup_service.stop_auto_cleanup()
+
         # Cancel the sync tasks
         twitter_sync_task.cancel()
         wallet_sync_task.cancel()
-        
+        event_cleanup_task.cancel()
+
         try:
             await twitter_sync_task
         except asyncio.CancelledError:
@@ -45,5 +51,10 @@ async def startup_tasks():
             await wallet_sync_task
         except asyncio.CancelledError:
             logger.info("✅ Wallet sync task cancelled")
-        
+
+        try:
+            await event_cleanup_task
+        except asyncio.CancelledError:
+            logger.info("✅ Event cleanup task cancelled")
+
         logger.info("✅ Background services stopped")
