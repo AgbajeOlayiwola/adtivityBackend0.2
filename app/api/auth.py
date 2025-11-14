@@ -1,11 +1,11 @@
 """Authentication endpoints."""
 
 from datetime import timedelta
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query, Header
 from sqlalchemy.orm import Session
 
 from ..core.database import get_db
-from ..core.security import get_password_hash, create_access_token, get_current_platform_user
+from ..core.security import get_password_hash, create_access_token, get_current_platform_user, revoke_token
 from ..core.auth_security import auth_security_service
 from ..core.security_decorators import rate_limit_by_user, rate_limit_by_ip, log_sensitive_operations
 from .. import crud, schemas, models
@@ -165,4 +165,27 @@ async def get_login_attempts(
     return {
         "email": current_user.email,
         "summary": summary
-    } 
+    }
+
+
+@router.post("/logout")
+async def logout(
+    authorization: str = Header(None, alias="Authorization"),
+    db: Session = Depends(get_db),
+    current_user: models.PlatformUser = Depends(get_current_platform_user)
+):
+    """Logout and revoke the current access token."""
+    if not authorization:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Authorization header missing")
+
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Authorization header")
+
+    token = parts[1]
+    try:
+        revoke_token(token=token, db=db, user_id=str(current_user.id))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to revoke token: {e}")
+
+    return {"message": "Successfully logged out"}

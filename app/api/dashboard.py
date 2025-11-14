@@ -78,7 +78,8 @@ async def create_company_for_current_user(
     new_company, raw_api_key = crud.create_client_company_with_api_key(
         db=db,
         name=company_input.name,
-        platform_user_id=current_user.id
+        platform_user_id=current_user.id,
+        campaign_url=company_input.campaign_url
     )
     
     return schemas.ClientCompanyCreateResponse(
@@ -87,7 +88,8 @@ async def create_company_for_current_user(
         created_at=new_company.created_at,
         is_active=new_company.is_active,
         platform_user_id=new_company.platform_user_id,
-        api_key=raw_api_key
+        api_key=raw_api_key,
+        campaign_url=new_company.campaign_url
     )
 
 
@@ -1824,3 +1826,4 @@ async def payment_conversion_funnel(
         "conversion_rates": conversion_rates,
         "funnel_stages": funnel_stages
     }
+
