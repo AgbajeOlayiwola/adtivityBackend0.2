@@ -1583,6 +1583,8 @@ class UserActivitySummaryBase(BaseModel):
     total_events: int = Field(0, ge=0, description="Total events")
     total_page_views: int = Field(0, ge=0, description="Total page views")
     unique_pages_viewed: int = Field(0, ge=0, description="Unique pages viewed")
+
+    # Breakdown fields
     country_breakdown: Dict[str, int] = Field(default_factory=dict, description="Country breakdown")
     region_breakdown: Dict[str, int] = Field(default_factory=dict, description="Region breakdown")
     city_breakdown: Dict[str, int] = Field(default_factory=dict, description="City breakdown")
@@ -1799,3 +1801,30 @@ class PaymentAnalyticsResponse(BaseModel):
     chain_breakdown: Dict[str, int]
     recent_payments: List[PaymentSessionResponse]
     conversion_funnel: Dict[str, int]  # started -> completed -> failed
+
+
+# ====================================================================================
+# --- Admin Schemas: Models for admin endpoints. ---
+# ====================================================================================
+class CompanyWithEvents(BaseModel):
+    """Schema for company with event count."""
+    company_id: uuid.UUID
+    company_name: str
+    platform_user_id: uuid.UUID
+    total_events: int
+
+class UserWithCompanies(BaseModel):
+    """Schema for user with their companies."""
+    user_id: uuid.UUID
+    user_email: str
+    user_name: Optional[str] = None
+    is_admin: bool
+    companies: List[Dict[str, Any]]  # List of {"id": uuid, "name": str}
+
+class AdminOverviewResponse(BaseModel):
+    """Schema for admin overview response."""
+    total_users: int
+    total_companies: int
+    users_with_companies: List[UserWithCompanies]
+    companies_with_events: List[CompanyWithEvents]
+

@@ -1,10 +1,15 @@
 """System endpoints for health checks and system information."""
 
 from datetime import datetime, timezone
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
 from ..core.config import settings
 from ..core.event_cleanup_service import purge_localhost_events
+from ..core.security import require_admin
+from ..core.database import get_db
+from ..models import PlatformUser
+from .. import crud, schemas
 
 router = APIRouter(prefix="/system", tags=["System"])
 
@@ -46,3 +51,22 @@ async def purge_localhost() -> dict:
         "cutoff_hours": 24,
         "timestamp": datetime.now(timezone.utc)
     }
+
+
+@router.get("/admin/overview", response_model=schemas.AdminOverviewResponse, summary="Admin overview")
+async def admin_overview(
+    current_user: PlatformUser = Depends(require_admin),
+    db: Session = Depends(get_db)
+) -> schemas.AdminOverviewResponse:
+    """Get admin overview with total users, companies, and events."""
+    total_users = crud.get_total_platform_users(db)
+    total_companies = crud.get_total_client_companies(db)
+    users_with_companies = crud.get_users_with_companies(db)
+    companies_with_events = crud.get_all_companies_with_event_counts(db)
+
+    return schemas.AdminOverviewResponse(
+        total_users=total_users,
+        total_companies=total_companies,
+        users_with_companies=users_with_companies,
+        companies_with_events=companies_with_events
+    )

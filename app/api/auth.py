@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.orm import Session
 
 from ..core.database import get_db
-from ..core.security import get_password_hash, create_access_token, get_current_platform_user
+from ..core.security import get_password_hash, create_access_token, get_current_platform_user, require_admin
 from ..core.auth_security import auth_security_service
 from ..core.security_decorators import rate_limit_by_user, rate_limit_by_ip, log_sensitive_operations
 from .. import crud, schemas, models
@@ -165,4 +165,44 @@ async def get_login_attempts(
     return {
         "email": current_user.email,
         "summary": summary
-    } 
+    }
+
+
+@router.post("/admin/register", response_model=schemas.PlatformUser, status_code=status.HTTP_201_CREATED)
+@rate_limit_by_ip(requests_per_minute=3, requests_per_hour=10)
+@log_sensitive_operations("admin_user_creation")
+async def register_admin_user(
+    user_input: schemas.PlatformUserCreate,
+    request: Request,
+    current_admin: models.PlatformUser = Depends(require_admin),
+    db: Session = Depends(get_db)
+) -> schemas.PlatformUser:
+    """Register a new admin platform user. Requires admin privileges."""
+    # Validate password strength
+    is_valid, error_message = auth_security_service.validate_password_strength(user_input.password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Password does not meet requirements: {error_message}"
+        )
+
+    # Check if user already exists
+    existing_user = crud.get_platform_user_by_email(db, email=user_input.email)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Platform user with this email already exists"
+        )
+
+    # Create new admin user
+    hashed_password = get_password_hash(user_input.password)
+    db_user = crud.create_platform_user(
+        db=db,
+        email=user_input.email,
+        hashed_password=hashed_password,
+        name=user_input.name,
+        phone_number=user_input.phone_number,
+        is_admin=True  # This user will be an admin
+    )
+
+    return db_user

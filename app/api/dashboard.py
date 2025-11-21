@@ -8,7 +8,7 @@ from sqlalchemy import func, desc, and_
 from datetime import datetime, timedelta, timezone, date
 
 from ..core.database import get_db
-from ..core.security import get_current_platform_user
+from ..core.security import get_current_platform_user, require_admin
 from ..core.security_decorators import (
     rate_limit_by_user,
     validate_query_parameters,
@@ -1418,41 +1418,6 @@ async def web3_wallet_analytics(
     }
 
 
-@router.get("/analytics/web3/wallet/{wallet_address}/balance")
-@rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
-@log_sensitive_operations("web3_wallet_balance")
-async def get_wallet_balance(
-    wallet_address: str = Path(..., description="Wallet address to get balance for"),
-    network: str = Query("solana", description="Blockchain network"),
-    current_user: models.PlatformUser = Depends(get_current_platform_user),
-    db: Session = Depends(get_db)
-):
-    """Get real-time wallet balance from blockchain explorer."""
-    try:
-        from ..core.blockchain_explorer_service import BlockchainExplorerService
-        
-        explorer_service = BlockchainExplorerService()
-        balance_data = await explorer_service.get_wallet_balance(wallet_address, network)
-        
-        return {
-            "wallet_address": wallet_address,
-            "network": network,
-            "success": balance_data.get("success", False),
-            "balance": balance_data.get("balance", 0),
-            "balance_usd": balance_data.get("balance_usd", 0),
-            "total_value_usd": balance_data.get("total_value_usd", 0),
-            "tokens": balance_data.get("tokens", []),
-            "error": balance_data.get("error"),
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error fetching wallet balance: {str(e)}"
-        )
-
-
 @router.get("/analytics/web3/contract/{contract_address}")
 @rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
 @validate_query_parameters(max_days=365)
@@ -1576,6 +1541,7 @@ async def web3_contract_analytics(
             "avg_interactions_per_wallet": round(len(contract_events) / len(unique_wallets), 2) if unique_wallets else 0
         }
     }
+
 
 @router.get("/analytics/web3/wallet/{wallet_address}/calculated-balance")
 @rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
@@ -1824,3 +1790,32 @@ async def payment_conversion_funnel(
         "conversion_rates": conversion_rates,
         "funnel_stages": funnel_stages
     }
+
+
+@router.get("/admin/companies-summary", summary="Admin: companies with user & event counts")
+async def admin_companies_summary(
+    _: object = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Return all client companies with total users and total events (Web2 + Web3).
+    Requires the caller to be an admin (uses require_admin dependency).
+    """
+    companies = db.query(models.ClientCompany).all()
+    results = []
+    for c in companies:
+        total_users = db.query(func.count(models.ClientAppUser.id)).filter(models.ClientAppUser.company_id == c.id).scalar() or 0
+        total_events_web2 = db.query(func.count(models.Event.id)).filter(models.Event.client_company_id == c.id).scalar() or 0
+        total_events_web3 = db.query(func.count(models.Web3Event.id)).filter(models.Web3Event.client_company_id == c.id).scalar() or 0
+        total_events = int(total_events_web2) + int(total_events_web3)
+        results.append({
+            "id": str(c.id),
+            "name": c.name,
+            "is_active": bool(c.is_active),
+            "created_at": c.created_at,
+            "platform_user_id": str(c.platform_user_id) if c.platform_user_id else None,
+            "total_users": int(total_users),
+            "total_events": int(total_events)
+        })
+
+    return {"total_companies": len(results), "companies": results}
+
