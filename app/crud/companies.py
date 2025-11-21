@@ -13,6 +13,7 @@ def create_client_company_with_api_key(
     db: Session,
     name: str,
     platform_user_id: uuid.UUID,
+    campaign_url: Optional[str] = None,
 ) -> Tuple[ClientCompany, str]:
     """Create a new client company with an API key and basic subscription plan."""
     # Generate a secure API key
@@ -23,6 +24,7 @@ def create_client_company_with_api_key(
         name=name,
         api_key_hash=api_key_hash,
         platform_user_id=platform_user_id,
+        campaign_url=campaign_url,
     )
     db.add(db_company)
     db.commit()

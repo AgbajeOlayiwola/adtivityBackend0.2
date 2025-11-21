@@ -57,10 +57,11 @@ class ClientCompany(Base):
     is_active = Column(Boolean, default=True)
     is_twitter_added = Column(Boolean, default=False, comment="Whether Twitter integration has been added")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+    campaign_url = Column(String, nullable=True)  # NEW: optional campaign URL associated with company
+
     # A foreign key to link this company to a PlatformUser.
     platform_user_id = Column(UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=False)
-    
+
     # The relationship with the PlatformUser table.
     platform_user = relationship("PlatformUser", back_populates="client_companies")
 
@@ -815,3 +816,19 @@ class UserActivitySummary(Base):
         Index('idx_activity_date', 'summary_date'),
         Index('idx_activity_company_date', 'company_id', 'summary_date'),
     )
+
+
+# New: Token blocklist for revoked tokens
+class TokenBlocklist(Base):
+    """Store revoked/blacklisted JWT tokens so they can't be used after logout."""
+    __tablename__ = "token_blocklist"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    token = Column(Text, nullable=False, unique=True, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=True, index=True)
+
+    # Relationship (optional)
+    user = relationship("PlatformUser")
+

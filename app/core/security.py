@@ -7,17 +7,22 @@ from passlib.context import CryptContext
 from fastapi import HTTPException, status, Depends, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import ProgrammingError, OperationalError
 import uuid
+import logging
 
 from .config import settings
 from .database import get_db
 from .. import crud, models
+
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # JWT Bearer scheme
 bearer_scheme = HTTPBearer(auto_error=False)
+
+logger = logging.getLogger(__name__)
 
 
 def get_password_hash(password: str) -> str:
@@ -43,7 +48,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 def verify_token(token: str) -> Optional[dict]:
-    """Verify and decode a JWT token."""
+    """Verify and decode a JWT token (does not access DB)."""
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
@@ -55,7 +60,7 @@ async def get_current_platform_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db)
 ) -> models.PlatformUser:
-    """Dependency to get the current authenticated platform user."""
+    """Dependency to get the current authenticated platform user. Also checks token blocklist."""
     if not credentials or credentials.scheme != "Bearer":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -71,7 +76,33 @@ async def get_current_platform_user(
             detail="Could not validate credentials: Invalid JWT",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    # Check if token is revoked using the provided DB session
+    try:
+        blocked = db.query(models.TokenBlocklist).filter(models.TokenBlocklist.token == token).first()
+        if blocked:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked"
+            )
+    except (ProgrammingError, OperationalError) as e:
+        # Likely the token_blocklist table or DB is not ready (migration not applied).
+        # Rollback the transaction to clear the failed state, log and allow token.
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("Failed to rollback DB session after blocklist check error")
+        logger.warning("Token blocklist check skipped due to DB error: %s", e)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # For any other unexpected error, rollback and log, then allow authentication.
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("Failed to rollback DB session after unexpected blocklist error")
+        logger.exception("Unexpected error during token blocklist check: %s", e)
+
     sub_value = payload.get("sub")
     if not sub_value:
         raise HTTPException(
@@ -124,4 +155,19 @@ def require_admin(user: models.PlatformUser = Depends(get_current_platform_user)
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin privileges required"
         )
-    return user 
+    return user
+
+
+def revoke_token(token: str, db: Session, user_id: Optional[str] = None, expires_at: Optional[datetime] = None) -> None:
+    """Insert token into blocklist to revoke it."""
+    try:
+        tb = models.TokenBlocklist(token=token, revoked_at=datetime.utcnow(), expires_at=expires_at)
+        if user_id:
+            try:
+                tb.user_id = uuid.UUID(str(user_id))
+            except Exception:
+                pass
+        db.add(tb)
+        db.commit()
+    except Exception:
+        db.rollback()

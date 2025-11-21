@@ -169,6 +169,7 @@ class ClientCompanyRegisterInput(ClientCompanyBase):
     """
     Schema for the input when a PlatformUser registers a new ClientCompany.
     """
+    campaign_url: Optional[str] = Field(None, description="Optional URL for the company's campaign")
     pass
 
 class ClientCompanyCreateResponse(ClientCompanyBase):
@@ -181,6 +182,7 @@ class ClientCompanyCreateResponse(ClientCompanyBase):
     created_at: datetime
     is_active: bool
     api_key: str  # Only returned on creation
+    campaign_url: Optional[str] = None
 
     class Config:
         from_attributes = True
