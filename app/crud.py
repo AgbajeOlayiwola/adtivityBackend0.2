@@ -44,6 +44,7 @@ def create_platform_user(
     hashed_password: str,
     name: Optional[str] = None,
     phone_number: Optional[str] = None,
+    is_admin: bool = False,
 ) -> PlatformUser:
     """
     Creates a new platform user in the database.
@@ -53,6 +54,7 @@ def create_platform_user(
         hashed_password=hashed_password,
         name=name,
         phone_number=phone_number,
+        is_admin=is_admin,
     )
     db.add(db_user)
     db.commit()
@@ -983,3 +985,52 @@ def get_user_locations(
                 }
     
     return list(user_locations.values())
+
+
+# ----------- Admin Analytics Functions -----------
+def get_total_platform_users(db: Session) -> int:
+    """Get the total number of platform users."""
+    return db.query(func.count(PlatformUser.id)).scalar()
+
+
+def get_total_client_companies(db: Session) -> int:
+    """Get the total number of client companies."""
+    return db.query(func.count(ClientCompany.id)).scalar()
+
+
+def get_total_events_for_company(db: Session, company_id: uuid.UUID) -> int:
+    """Get the total number of events (Web2 + Web3) for a specific company."""
+    web2_count = db.query(func.count(Event.id)).filter(Event.client_company_id == company_id).scalar()
+    web3_count = db.query(func.count(Web3Event.id)).filter(Web3Event.client_company_id == company_id).scalar()
+    return web2_count + web3_count
+
+
+def get_all_companies_with_event_counts(db: Session) -> List[Dict[str, Any]]:
+    """Get all companies with their event counts."""
+    companies = db.query(ClientCompany).all()
+    result = []
+    for company in companies:
+        event_count = get_total_events_for_company(db, company.id)
+        result.append({
+            "company_id": company.id,
+            "company_name": company.name,
+            "platform_user_id": company.platform_user_id,
+            "total_events": event_count
+        })
+    return result
+
+
+def get_users_with_companies(db: Session) -> List[Dict[str, Any]]:
+    """Get all platform users with their associated companies."""
+    users = db.query(PlatformUser).all()
+    result = []
+    for user in users:
+        companies = get_client_companies_by_platform_user(db, user.id)
+        result.append({
+            "user_id": user.id,
+            "user_email": user.email,
+            "user_name": user.name,
+            "is_admin": user.is_admin,
+            "companies": [{"id": c.id, "name": c.name} for c in companies]
+        })
+    return result

@@ -1,9 +1,11 @@
 """Main FastAPI application entry point."""
 
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from contextlib import asynccontextmanager
+import secrets
 
 from .core.config import settings
 from .core.database import init_db, close_db
@@ -41,17 +43,56 @@ async def lifespan(app: FastAPI):
     close_db()
 
 
-# Create FastAPI application
+# Disable FastAPI's automatic docs endpoints so we can protect them with Basic Auth
 app = FastAPI(
     title=settings.APP_NAME,
     description="API for Adtivity - A multi-tenant analytics platform for Web2 and Web3 applications.",
     version=settings.APP_VERSION,
     debug=settings.DEBUG,
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
-# Add security middleware (must be first) - TEMPORARILY DISABLED
-# app.middleware("http")(security_middleware_handler)
+# Basic auth for docs
+security = HTTPBasic()
+
+def verify_docs_credentials(credentials: HTTPBasicCredentials = Depends(security)):
+    """Verify basic auth credentials for docs access."""
+    correct_username = secrets.compare_digest(credentials.username, settings.DOCS_BASIC_USER)
+    correct_password = secrets.compare_digest(credentials.password, settings.DOCS_BASIC_PASSWORD)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+# Override default docs endpoints with authentication
+@app.get("/docs", include_in_schema=False)
+async def get_docs(username: str = Depends(verify_docs_credentials)):
+    """Protected docs endpoint."""
+    return RedirectResponse(url="/docs/", status_code=307)
+
+@app.get("/docs/", include_in_schema=False)
+async def get_docs_page(username: str = Depends(verify_docs_credentials)):
+    """Protected docs page."""
+    # This will serve the actual docs page after authentication
+    from fastapi.openapi.docs import get_swagger_ui_html
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="API Docs")
+
+@app.get("/openapi.json", include_in_schema=False)
+async def get_openapi_json(username: str = Depends(verify_docs_credentials)):
+    """Protected OpenAPI JSON."""
+    return app.openapi()
+
+@app.get("/redoc", include_in_schema=False)
+async def get_redoc(username: str = Depends(verify_docs_credentials)):
+    """Protected ReDoc endpoint."""
+    from fastapi.openapi.docs import get_redoc_html
+    return get_redoc_html(openapi_url="/openapi.json", title="API Docs")
 
 # Add custom CORS middleware
 # SDK endpoints allow all origins, other endpoints are restricted

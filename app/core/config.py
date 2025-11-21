@@ -8,6 +8,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
     
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
+
     # Database Configuration
     DATABASE_URL: str = Field(default="postgresql://postgres:password@localhost:5432/adtivity", description="Database connection URL (defaults to local PostgreSQL)")
     
@@ -34,7 +40,11 @@ class Settings(BaseSettings):
     APP_NAME: str = Field(default="Adtivity API", description="Application name")
     APP_VERSION: str = Field(default="0.1.0", description="Application version")
     DEBUG: bool = Field(default=False, description="Debug mode")
-    
+
+    # Docs Basic Auth (set via environment in production)
+    DOCS_BASIC_USER: str = Field(default="admin", description="Basic auth username for docs")
+    DOCS_BASIC_PASSWORD: str = Field(default="adtivity2024!", description="Basic auth password for docs")
+
     # CORS Configuration
     CORS_ORIGINS: list[str] = Field(default=["*"], description="Allowed CORS origins")
     CORS_ALLOW_CREDENTIALS: bool = Field(default=True, description="Allow CORS credentials")
@@ -59,13 +69,7 @@ class Settings(BaseSettings):
     MORALIS_API_KEY: Optional[str] = Field(default=None, description="Moralis API key for blockchain data")
     HELIUS_API_KEY: Optional[str] = Field(default=None, description="Helius API key for Solana data")
     
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore"
-    )
-    
+
     @validator("DATABASE_URL")
     def validate_database_url(cls, v: str) -> str:
         """Ensure database URL is properly formatted."""
@@ -85,4 +89,4 @@ class Settings(BaseSettings):
 
 
 # Global settings instance
-settings = Settings() 
+settings = Settings()
