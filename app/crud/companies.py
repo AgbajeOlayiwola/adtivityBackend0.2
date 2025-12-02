@@ -5,7 +5,7 @@ import uuid
 from typing import Optional, Tuple, List
 from sqlalchemy.orm import Session
 
-from ..models import ClientCompany, CompanyTwitter
+from ..models import ClientCompany, CompanyTwitter, TeamMembership, TeamActivityLog
 from .auth import get_password_hash
 
 
@@ -113,9 +113,191 @@ def get_twitter_profile_by_platform_user(
     db: Session, platform_user_id: uuid.UUID
 ) -> Optional[CompanyTwitter]:
     """Get the first Twitter profile for companies owned by a platform user."""
-    return db.query(CompanyTwitter)\
-        .join(ClientCompany, CompanyTwitter.company_id == ClientCompany.id)\
+    return (
+        db.query(CompanyTwitter)
+        .join(ClientCompany, CompanyTwitter.company_id == ClientCompany.id)
         .filter(
             ClientCompany.platform_user_id == platform_user_id,
-            ClientCompany.is_active == True
-        ).first()
+            ClientCompany.is_active == True,
+        )
+        .first()
+    )
+
+
+# --- Team collaboration helpers ---
+
+
+def log_team_activity(
+    db: Session,
+    *,
+    company_id: uuid.UUID,
+    user_id: Optional[uuid.UUID],
+    action_type: str,
+    target_type: Optional[str] = None,
+    target_id: Optional[str] = None,
+    meta: Optional[dict] = None,
+) -> None:
+    """Create a simple team activity log entry (no commit)."""
+    activity = TeamActivityLog(
+        company_id=company_id,
+        user_id=user_id,
+        action_type=action_type,
+        target_type=target_type,
+        target_id=str(target_id) if target_id is not None else None,
+        meta=meta,
+    )
+    db.add(activity)
+
+
+def ensure_owner_membership_for_company(db: Session, company: ClientCompany) -> None:
+    """Ensure the owning platform user has an OWNER membership for this company."""
+    existing = (
+        db.query(TeamMembership)
+        .filter(
+            TeamMembership.company_id == company.id,
+            TeamMembership.email == company.platform_user.email,
+        )
+        .first()
+    )
+    if existing:
+        if existing.user_id is None:
+            existing.user_id = company.platform_user_id
+        if existing.role != "owner":
+            existing.role = "owner"
+        if existing.status != "active":
+            existing.status = "active"
+        return
+
+    membership = TeamMembership(
+        company_id=company.id,
+        user_id=company.platform_user_id,
+        email=company.platform_user.email,
+        role="owner",
+        status="active",
+        invited_by_user_id=company.platform_user_id,
+    )
+    db.add(membership)
+
+
+def create_team_invitation(
+    db: Session,
+    *,
+    company: ClientCompany,
+    inviter: "PlatformUser",
+    email: str,
+    role: str,
+    expires_at: Optional["datetime"] = None,
+) -> TeamMembership:
+    """Create or refresh a team invitation for the given email."""
+    from datetime import datetime, timedelta, timezone
+    import secrets as _secrets
+
+    if expires_at is None:
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+
+    role_norm = role.lower()
+
+    membership = (
+        db.query(TeamMembership)
+        .filter(
+            TeamMembership.company_id == company.id,
+            TeamMembership.email == email,
+        )
+        .first()
+    )
+
+    invite_token = _secrets.token_urlsafe(32)
+
+    if membership is None:
+        membership = TeamMembership(
+            company_id=company.id,
+            email=email,
+            role=role_norm,
+            status="pending",
+            invited_by_user_id=inviter.id,
+            invite_token=invite_token,
+            expires_at=expires_at,
+        )
+        db.add(membership)
+    else:
+        membership.role = role_norm
+        membership.status = "pending"
+        membership.invited_by_user_id = inviter.id
+        membership.invite_token = invite_token
+        membership.expires_at = expires_at
+
+    log_team_activity(
+        db,
+        company_id=company.id,
+        user_id=inviter.id,
+        action_type="invite_sent",
+        target_type="membership",
+        target_id=membership.id,
+        meta={"email": email, "role": role_norm},
+    )
+
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
+def accept_team_invitation(
+    db: Session,
+    *,
+    token: str,
+    user: "PlatformUser",
+) -> TeamMembership:
+    """Accept an invitation by token and bind it to the given user."""
+    from datetime import datetime, timezone
+
+    membership = (
+        db.query(TeamMembership)
+        .filter(TeamMembership.invite_token == token)
+        .first()
+    )
+    if not membership:
+        raise ValueError("Invalid invitation token")
+
+    if membership.expires_at and membership.expires_at < datetime.now(timezone.utc):
+        raise ValueError("Invitation has expired")
+
+    existing_active = (
+        db.query(TeamMembership)
+        .filter(
+            TeamMembership.company_id == membership.company_id,
+            TeamMembership.user_id == user.id,
+            TeamMembership.status == "active",
+        )
+        .first()
+    )
+    if existing_active:
+        return existing_active
+
+    membership.user_id = user.id
+    membership.email = user.email
+    membership.status = "active"
+    membership.invite_token = None
+
+    log_team_activity(
+        db,
+        company_id=membership.company_id,
+        user_id=user.id,
+        action_type="invite_accepted",
+        target_type="membership",
+        target_id=membership.id,
+        meta={"role": membership.role},
+    )
+
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
+def list_team_members(db: Session, company_id: uuid.UUID) -> list[TeamMembership]:
+    """List all team memberships for a given company."""
+    return (
+        db.query(TeamMembership)
+        .filter(TeamMembership.company_id == company_id)
+        .order_by(TeamMembership.created_at.asc())
+        .all()
+    )

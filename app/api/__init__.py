@@ -1,6 +1,5 @@
 """API routes module."""
 
-from .auth import router as auth_router
 from .dashboard import router as dashboard_router
 from .sdk import router as sdk_router
 from .analytics import router as analytics_router
@@ -10,10 +9,14 @@ from .twitter import router as twitter_router
 from .aggregation import router as aggregation_router
 from .wallets import router as wallets_router
 from .user_engagement import router as user_engagement_router
+from .auth import router as auth_router
+from .payments import router as payments_router
+from .wallet_sync import router as wallet_sync_router
+from .team import router as team_router
 
 __all__ = [
     "auth_router",
-    "dashboard_router", 
+    "dashboard_router",
     "sdk_router",
     "analytics_router",
     "system_router",
@@ -21,5 +24,8 @@ __all__ = [
     "twitter_router",
     "aggregation_router",
     "wallets_router",
-    "user_engagement_router"
-] 
+    "user_engagement_router",
+    "payments_router",
+    "wallet_sync_router",
+    "team_router",
+]

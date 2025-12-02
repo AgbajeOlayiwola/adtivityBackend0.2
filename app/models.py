@@ -43,6 +43,11 @@ class PlatformUser(Base):
     # Twitter integration relationships
     # twitter_accounts = relationship("TwitterAccount", back_populates="platform_user")
 
+    # Team collaboration relationships
+    team_memberships = relationship("TeamMembership", back_populates="user", foreign_keys="TeamMembership.user_id")
+    invited_team_memberships = relationship("TeamMembership", back_populates="invited_by", foreign_keys="TeamMembership.invited_by_user_id")
+    team_activity_logs = relationship("TeamActivityLog", back_populates="user")
+
 
 class ClientCompany(Base):
     """
@@ -72,6 +77,10 @@ class ClientCompany(Base):
     twitter_accounts = relationship("CompanyTwitter", back_populates="company")
     mention_notifications = relationship("MentionNotification", back_populates="company")
     wallet_connections = relationship("WalletConnection", back_populates="company")
+
+    # Team collaboration relationships
+    team_memberships = relationship("TeamMembership", back_populates="company", cascade="all, delete-orphan")
+    team_activity_logs = relationship("TeamActivityLog", back_populates="company", cascade="all, delete-orphan")
 
 
 class ClientAppUser(Base):
@@ -832,3 +841,109 @@ class TokenBlocklist(Base):
     # Relationship (optional)
     user = relationship("PlatformUser")
 
+
+class TeamMembership(Base):
+    """Team membership for platform users collaborating on a client company."""
+    __tablename__ = "team_memberships"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=True, index=True)
+    email = Column(String, nullable=False, index=True, comment="Email invited; may not be a registered user yet")
+    role = Column(String, nullable=False, default="owner", index=True)
+    status = Column(String, nullable=False, default="pending", index=True)  # pending, active, revoked
+    invite_token = Column(String, unique=True, nullable=True, index=True)
+    invited_by_user_id = Column(UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), default=func.now(), onupdate=func.now())
+
+    company = relationship("ClientCompany", back_populates="team_memberships")
+    user = relationship("PlatformUser", foreign_keys=[user_id])
+    invited_by = relationship("PlatformUser", foreign_keys=[invited_by_user_id])
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "email", name="uq_team_membership_company_email"),
+    )
+
+
+class TeamActivityLog(Base):
+    """Lightweight activity log for team-related actions and key campaign operations."""
+    __tablename__ = "team_activity_logs"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("platform_users.id"), nullable=True, index=True)
+    action_type = Column(String, nullable=False, index=True)
+    target_type = Column(String, nullable=True, index=True)
+    target_id = Column(String, nullable=True, index=True)
+    meta = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    company = relationship("ClientCompany", back_populates="team_activity_logs")
+    user = relationship("PlatformUser", back_populates="team_activity_logs")
+
+
+# ====================================================================================
+# --- Test Data Models ---
+# ====================================================================================
+
+class TestCompany(Base):
+    """Test company model for generating sample data."""
+    __tablename__ = "test_companies"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationship to test events
+    events = relationship("TestEvent", back_populates="company")
+
+
+class TestUser(Base):
+    """Test user model for generating sample data."""
+    __tablename__ = "test_users"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    email = Column(String, nullable=False, unique=True)
+    name = Column(String)
+    hashed_password = Column(String)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class TestEvent(Base):
+    """Test event model for generating sample data."""
+    __tablename__ = "test_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    event_name = Column(String, nullable=False)
+    event_type = Column(String, nullable=False)
+    user_id = Column(String, nullable=False)
+    properties = Column(JSON, default={})
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+    # Link test event to its test company
+    company_id = Column(UUID(as_uuid=True), ForeignKey("test_companies.id"), nullable=False, index=True)
+    company = relationship("TestCompany", back_populates="events")
+
+    # Optional link to a test campaign for campaign-level tests
+    campaign_id = Column(UUID(as_uuid=True), ForeignKey("test_campaigns.id"), nullable=True, index=True)
+    campaign = relationship("TestCampaign", back_populates="events")
+
+
+class TestCampaign(Base):
+    """Test campaign model for generating sample data."""
+    __tablename__ = "test_campaigns"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(UUID(as_uuid=True), ForeignKey("test_companies.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    status = Column(String, nullable=False, default="paused", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    events = relationship("TestEvent", back_populates="campaign", lazy="selectin")

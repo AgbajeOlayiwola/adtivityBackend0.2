@@ -286,7 +286,7 @@ async def get_all_events(
 @validate_query_parameters(max_days=90)
 @log_sensitive_operations("sessions_summary")
 async def sessions_summary(
-    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    company_id: Optional[uuid.UUID] = Query(None, description="Filter by company; defaults to all owned"),
     days: int = Query(7, ge=1, le=90, description="Lookback window in days"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
@@ -359,7 +359,7 @@ async def sessions_summary(
 @validate_query_parameters(max_limit=50)
 @log_sensitive_operations("top_regions")
 async def top_regions(
-    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    company_id: Optional[uuid.UUID] = Query(None, description="Filter by company; defaults to all owned"),
     limit: int = Query(10, ge=1, le=50, description="Max regions to return"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
@@ -426,7 +426,7 @@ async def top_regions(
 @validate_query_parameters(max_limit=100)
 @log_sensitive_operations("recent_sessions")
 async def recent_sessions(
-    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    company_id: Optional[uuid.UUID] = Query(None, description="Filter by company; defaults to all owned"),
     limit: int = Query(20, ge=1, le=100, description="Number of recent sessions"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
@@ -542,7 +542,7 @@ async def debug_current_user(
 @validate_query_parameters(max_days=365, max_limit=100)
 @log_sensitive_operations("unique_users_analytics")
 async def unique_users_analytics(
-    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    company_id: Optional[uuid.UUID] = Query(None, description="Filter by company; defaults to all owned"),
     days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
     limit: int = Query(20, ge=1, le=100, description="Number of recent/top users to return"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
@@ -745,7 +745,7 @@ async def get_twitter_status_summary(
 @validate_query_parameters(max_days=365)
 @log_sensitive_operations("web3_analytics_overview")
 async def web3_analytics_overview(
-    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    company_id: Optional[uuid.UUID] = Query(None, description="Filter by company; defaults to all owned"),
     days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
@@ -1195,7 +1195,7 @@ async def web3_analytics_overview(
 @log_sensitive_operations("web3_wallet_analytics")
 async def web3_wallet_analytics(
     wallet_address: str = Path(..., description="Wallet address to analyze"),
-    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    company_id: Optional[uuid.UUID] = Query(None, description="Filter by company; defaults to all owned"),
     days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
@@ -1426,7 +1426,7 @@ async def web3_wallet_analytics(
 @log_sensitive_operations("web3_contract_analytics")
 async def web3_contract_analytics(
     contract_address: str = Path(..., description="Contract address to analyze"),
-    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    company_id: Optional[uuid.UUID] = Query(None, description="Filter by company; defaults to all owned"),
     days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
@@ -1585,7 +1585,7 @@ async def get_wallet_calculated_balance(
 @rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
 @log_sensitive_operations("payment_analytics_overview")
 async def payment_analytics_overview(
-    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    company_id: Optional[uuid.UUID] = Query(None, description="Filter by company; defaults to all owned"),
     days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
@@ -1698,7 +1698,7 @@ async def payment_analytics_overview(
 @rate_limit_by_user(requests_per_minute=30, requests_per_hour=500)
 @log_sensitive_operations("payment_conversion_funnel")
 async def payment_conversion_funnel(
-    company_id: uuid.UUID | None = Query(None, description="Filter by company; defaults to all owned"),
+    company_id: Optional[uuid.UUID] = Query(None, description="Filter by company; defaults to all owned"),
     days: int = Query(30, ge=1, le=365, description="Lookback window in days"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
@@ -1820,4 +1820,3 @@ async def admin_companies_summary(
         })
 
     return {"total_companies": len(results), "companies": results}
-

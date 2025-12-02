@@ -681,11 +681,11 @@ class CompanyTwitterResponse(CompanyTwitterBase):
     """Company Twitter account response schema."""
     id: str  # UUID as string
     company_id: str  # UUID as string
-    twitter_user_id: str | None = None
+    twitter_user_id: Optional[str] = None
     followers_count: int
     following_count: int
     tweets_count: int
-    profile_image_url: str | None = None
+    profile_image_url: Optional[str] = None
     verified: bool
     last_updated: datetime
     
@@ -1830,3 +1830,75 @@ class AdminOverviewResponse(BaseModel):
     users_with_companies: List[UserWithCompanies]
     companies_with_events: List[CompanyWithEvents]
 
+# ====================================================================================
+# --- Team Schemas: Models for managing teams and permissions. ---
+# ====================================================================================
+class TeamRole(str, Enum):
+    OWNER = "owner"
+    ADMIN = "admin"
+    EDITOR = "editor"
+    VIEWER = "viewer"
+
+
+class MembershipStatus(str, Enum):
+    PENDING = "pending"
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
+class TeamMembershipBase(BaseModel):
+    email: EmailStr
+    role: TeamRole = TeamRole.EDITOR
+
+
+class TeamMembershipCreate(TeamMembershipBase):
+    pass
+
+
+class TeamMembershipResponse(TeamMembershipBase):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    user_id: Optional[uuid.UUID] = None
+    status: MembershipStatus
+    invited_by_user_id: Optional[uuid.UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TeamInviteCreate(BaseModel):
+    email: EmailStr
+    role: TeamRole = TeamRole.EDITOR
+    message: Optional[str] = None
+
+
+class TeamInviteResponse(BaseModel):
+    membership: TeamMembershipResponse
+    invite_token: str
+
+
+class TeamActivityType(str, Enum):
+    INVITE_SENT = "invite_sent"
+    INVITE_ACCEPTED = "invite_accepted"
+    MEMBERSHIP_ROLE_CHANGED = "membership_role_changed"
+    MEMBER_REMOVED = "member_removed"
+    COMPANY_CREATED = "company_created"
+    CAMPAIGN_CREATED = "campaign_created"
+    CAMPAIGN_UPDATED = "campaign_updated"
+    CAMPAIGN_DELETED = "campaign_deleted"
+
+
+class TeamActivityEntry(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    user_id: Optional[uuid.UUID] = None
+    action_type: str
+    target_type: Optional[str] = None
+    target_id: Optional[str] = None
+    meta: Optional[Dict[str, Any]] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
