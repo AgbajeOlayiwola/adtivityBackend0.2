@@ -1,6 +1,6 @@
 """Event-related CRUD operations."""
 
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from datetime import datetime, timezone
 import uuid
 from sqlalchemy.orm import Session
@@ -184,65 +184,63 @@ def handle_web3_sdk_event(db: Session, company_id: uuid.UUID, payload: SDKEventP
     )
 
 
-def get_all_events_for_user(db: Session, platform_user_id: uuid.UUID, company_id: Optional[uuid.UUID] = None):
-    """
-    Retrieves all standard events for a given platform user by first
-    finding all the companies they own, and then fetching all events
-    associated with those companies.
-    
-    Args:
-        db: Database session
-        platform_user_id: The platform user ID to get events for
-        company_id: Optional company ID to filter events. If provided, only returns events for that company.
+def get_all_events_for_user(
+    db: Session,
+    platform_user_id: uuid.UUID,
+    company_id: Optional[uuid.UUID] = None,
+    limit: int = 100,
+    offset: int = 0,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+) -> Tuple[List[Event], int]:
+    """Return a paginated list of standard events for a platform user.
+
+    If company_id is provided, only events for that company are returned.
+    Otherwise, all events for all companies owned by the user are included.
+
+    Returns a tuple of (events, total_count) where total_count is the number
+    of events that match the filters *before* limit/offset are applied.
     """
     import logging
-    logger = logging.getLogger(__name__)
-    
-    logger.info(f"🔍 get_all_events_for_user called for platform_user_id: {platform_user_id}, company_id: {company_id}")
-    
-    # If company_id is provided, filter by that specific company
-    if company_id:
-        # Verify the user owns this company
-        company = db.query(ClientCompany).filter(
-            ClientCompany.id == company_id,
-            ClientCompany.platform_user_id == platform_user_id
-        ).first()
-        
-        if not company:
-            logger.warning(f"⚠️ Company {company_id} not found or not owned by user {platform_user_id}")
-            return []
-        
-        # Get events for this specific company
-        events = db.query(Event).filter(
-            Event.client_company_id == company_id
-        ).all()
-        
-        logger.info(f"✅ Found {len(events)} events for company {company_id}")
-        return events
-    
-    # Otherwise, get all company IDs for the authenticated user
-    company_ids = db.query(ClientCompany.id).filter(
-        ClientCompany.platform_user_id == platform_user_id
-    ).all()
-    
-    logger.info(f"📊 Found {len(company_ids)} companies for user {platform_user_id}")
-    
-    # The result is a list of tuples, e.g., [(uuid1,), (uuid2,)].
-    # We need to flatten it into a simple list of UUIDs.
-    company_ids = [id_tuple[0] for id_tuple in company_ids]
-    
-    logger.info(f"🏢 Company IDs: {[str(cid) for cid in company_ids]}")
-    
-    # If the user has no companies, return an empty list immediately
-    if not company_ids:
-        logger.warning(f"⚠️ No companies found for user {platform_user_id}, returning empty list")
-        return []
+    from sqlalchemy import and_
 
-    # Use the company IDs to query for all events
-    events = db.query(Event).filter(
-        Event.client_company_id.in_(company_ids)
-    ).all()
-    
-    logger.info(f"✅ Found {len(events)} events for companies {[str(cid) for cid in company_ids]}")
-    
-    return events 
+    logger = logging.getLogger(__name__)
+    logger.info(f"🔍 get_all_events_for_user called for platform_user_id={platform_user_id}, company_id={company_id}, limit={limit}, offset={offset}")
+
+    # Build base query of company IDs owned by this user
+    company_query = db.query(ClientCompany.id).filter(
+        ClientCompany.platform_user_id == platform_user_id
+    )
+
+    if company_id:
+        # Restrict to the specific company and ensure ownership
+        company_query = company_query.filter(ClientCompany.id == company_id)
+
+    company_ids = [row[0] for row in company_query.all()]
+    if not company_ids:
+        logger.warning(f"⚠️ No companies found for user {platform_user_id} (company filter={company_id})")
+        return [], 0
+
+    # Base events query
+    events_query = db.query(Event).filter(Event.client_company_id.in_(company_ids))
+
+    # Optional time range filters
+    if start_time is not None:
+        events_query = events_query.filter(Event.timestamp >= start_time)
+    if end_time is not None:
+        events_query = events_query.filter(Event.timestamp <= end_time)
+
+    # Compute total before pagination
+    total_count = events_query.count()
+
+    # Apply ordering and pagination
+    events = (
+        events_query
+        .order_by(Event.timestamp.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    logger.info(f"✅ get_all_events_for_user returning {len(events)} events (total={total_count})")
+    return events, total_count

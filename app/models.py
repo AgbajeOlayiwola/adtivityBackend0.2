@@ -296,11 +296,20 @@ class Event(Base):
     city = Column(String(100), index=True)   # City name
     ip_address = Column(String(45), index=True)  # IPv4 or IPv6 address
     
+    # Idempotency / external identity for deduplication
+    idempotency_key = Column(String, nullable=True, index=True)
+    external_event_id = Column(String, nullable=True, index=True)
+
     # A foreign key to link the event to the company that sent it.
     client_company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False)
 
     # The relationship with the ClientCompany table.
     client_company = relationship("ClientCompany", back_populates="events")
+
+    __table_args__ = (
+        # Ensure a given idempotency_key is unique per company when provided
+        UniqueConstraint("client_company_id", "idempotency_key", name="uq_events_company_idempotency_key"),
+    )
 
 
 # --- NEW: Web3 Event Blueprint ---
@@ -327,11 +336,19 @@ class Web3Event(Base):
     city = Column(String(100), index=True)   # City name
     ip_address = Column(String(45), index=True)  # IPv4 or IPv6 address
 
+    # Idempotency / external identity for deduplication
+    idempotency_key = Column(String, nullable=True, index=True)
+    external_event_id = Column(String, nullable=True, index=True)
+
     # A foreign key to link the Web3 event to the company that sent it.
     client_company_id = Column(UUID(as_uuid=True), ForeignKey("client_companies.id"), nullable=False)
 
     # The relationship with the ClientCompany table.
     client_company = relationship("ClientCompany", back_populates="web3_events")
+
+    __table_args__ = (
+        UniqueConstraint("client_company_id", "idempotency_key", name="uq_web3_events_company_idempotency_key"),
+    )
 
 
 class PlatformMetrics(Base):
@@ -391,6 +408,10 @@ class RawEvent(Base):
     anonymous_id = Column(String, index=True)
     session_id = Column(String, index=True)
     
+    # Idempotency / external identity for deduplication of raw events as well
+    idempotency_key = Column(String, nullable=True, index=True)
+    external_event_id = Column(String, nullable=True, index=True)
+
     # Full event properties
     properties = Column(JSON, default={})
     

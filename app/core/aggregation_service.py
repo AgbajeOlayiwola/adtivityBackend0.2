@@ -92,7 +92,9 @@ class AggregationService:
                 region=event_data.get("region"),
                 city=event_data.get("city"),
                 ip_address=event_data.get("ip_address"),
-                event_timestamp=event_data.get("timestamp", datetime.utcnow())
+                event_timestamp=event_data.get("timestamp", datetime.utcnow()),
+                idempotency_key=event_data.get("idempotency_key"),
+                external_event_id=event_data.get("external_event_id"),
             )
             self.db.add(raw_event)
             self.db.commit()
@@ -402,10 +404,21 @@ class AggregationService:
     def _create_daily_aggregation_from_events(
         self, company_id: str, campaign_id: str, event_date: date, events: List[RawEvent]
     ) -> Optional[CampaignAnalyticsDaily]:
-        """Create daily aggregation from a list of raw events."""
+        """Create or replace daily aggregation from a list of raw events.
+        Safe to call multiple times for the same (company, campaign, date): previous
+        aggregate for that key is deleted and replaced with a freshly computed one.
+        """
         if not events:
             return None
-        
+
+        # Remove any existing aggregate for this (company, campaign, date) window
+        self.db.query(CampaignAnalyticsDaily).filter(
+            CampaignAnalyticsDaily.company_id == uuid.UUID(company_id),
+            CampaignAnalyticsDaily.campaign_id == campaign_id,
+            CampaignAnalyticsDaily.analytics_date == event_date,
+        ).delete(synchronize_session=False)
+        self.db.flush()
+
         # Initialize aggregation
         daily_agg = CampaignAnalyticsDaily(
             company_id=uuid.UUID(company_id),
@@ -469,10 +482,22 @@ class AggregationService:
     def _create_hourly_aggregation_from_events(
         self, company_id: str, campaign_id: str, event_date: date, event_hour: int, events: List[RawEvent]
     ) -> Optional[CampaignAnalyticsHourly]:
-        """Create hourly aggregation from a list of raw events."""
+        """Create or replace hourly aggregation from a list of raw events.
+        Safe to call multiple times for the same (company, campaign, date, hour): previous
+        aggregate for that key is deleted and replaced with a freshly computed one.
+        """
         if not events:
             return None
-        
+
+        # Remove any existing aggregate for this (company, campaign, date, hour) window
+        self.db.query(CampaignAnalyticsHourly).filter(
+            CampaignAnalyticsHourly.company_id == uuid.UUID(company_id),
+            CampaignAnalyticsHourly.campaign_id == campaign_id,
+            CampaignAnalyticsHourly.analytics_date == event_date,
+            CampaignAnalyticsHourly.hour == event_hour,
+        ).delete(synchronize_session=False)
+        self.db.flush()
+
         # Initialize aggregation
         hourly_agg = CampaignAnalyticsHourly(
             company_id=uuid.UUID(company_id),

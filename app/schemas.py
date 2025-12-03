@@ -1902,3 +1902,12 @@ class TeamActivityEntry(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PagedEventsResponse(BaseModel):
+    """Paginated wrapper for Event list responses."""
+    total: int
+    limit: int
+    offset: int
+    items: List[Event]
+
