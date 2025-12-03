@@ -230,22 +230,25 @@ async def regenerate_api_key_for_company(
     )
 
 
-@router.get("/all-events", response_model=List[schemas.Event])
+@router.get("/all-events", response_model=schemas.PagedEventsResponse)
 async def get_all_events(
     company_id: Optional[uuid.UUID] = Query(None, description="Filter events by company ID. If not provided, returns events for all companies owned by the user."),
+    limit: int = Query(100, ge=1, le=1000, description="Max number of events to return"),
+    offset: int = Query(0, ge=0, description="Number of events to skip (for pagination)"),
     current_user: models.PlatformUser = Depends(get_current_platform_user),
     db: Session = Depends(get_db)
-) -> List[schemas.Event]:
-    """Get all standard (Web2) events for all client companies associated with the authenticated platform user.
-    
+) -> schemas.PagedEventsResponse:
+    """Get a paginated list of standard (Web2) events for the authenticated platform user.
+
     If company_id is provided, only returns events for that specific company.
-    The frontend can use the company_id field in each event to group/filter events by company.
+    Otherwise, returns events for all companies owned by the user.
+    Results are ordered by timestamp (newest first) and limited by `limit`/`offset`.
     """
     import logging
     logger = logging.getLogger(__name__)
     
-    logger.info(f"🔍 get_all_events called for user: {current_user.id} ({current_user.email}), company_id: {company_id}")
-    
+    logger.info(f"🔍 get_all_events called for user: {current_user.id} ({current_user.email}), company_id: {company_id}, limit={limit}, offset={offset}")
+
     try:
         # If company_id is provided, validate that the user owns that company
         if company_id:
@@ -256,20 +259,24 @@ async def get_all_events(
                     detail="Not authorized to view events for this company"
                 )
         
-        # Get events for the user (optionally filtered by company_id)
-        events = crud.get_all_events_for_user(
-            db=db, 
+        # Get paginated events for the user (optionally filtered by company_id)
+        events, total = crud.get_all_events_for_user(
+            db=db,
             platform_user_id=current_user.id,
-            company_id=company_id
+            company_id=company_id,
+            limit=limit,
+            offset=offset,
         )
-        logger.info(f"✅ Found {len(events)} events for user {current_user.id}" + (f" (filtered by company: {company_id})" if company_id else ""))
-        
-        # Log some details about the events
-        if events:
-            logger.info(f"📊 First event: {events[0].id} - {events[0].event_name} (company: {events[0].client_company_id})")
-        
-        return events
-        
+        logger.info(f"✅ Found {len(events)} events (total={total}) for user {current_user.id}" + (f" (filtered by company: {company_id})" if company_id else ""))
+
+        # Build paginated response
+        return schemas.PagedEventsResponse(
+            total=total,
+            limit=limit,
+            offset=offset,
+            items=events,
+        )
+
     except HTTPException:
         raise
     except Exception as e:

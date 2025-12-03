@@ -48,17 +48,29 @@ class UnifiedAnalyticsService:
         if not plan:
             plan = self.get_default_plan()
         
-        # Process through aggregation system
+        # Normalize / extract idempotency identifiers
+        idempotency_key = event_data.get("idempotency_key") or event_data.get("event_id")
+        external_event_id = event_data.get("external_event_id") or event_data.get("event_id")
+
+        # Process through aggregation system (pass through identifiers for raw_events)
+        if idempotency_key is not None:
+            event_data.setdefault("idempotency_key", idempotency_key)
+        if external_event_id is not None:
+            event_data.setdefault("external_event_id", external_event_id)
         aggregation_result = await self.aggregation_service.process_event(company_id, event_data)
         
         # Always store in original tables for dashboard compatibility
         # This ensures all events are available in the raw events table
-        self._store_legacy_event(company_id, event_data)
-        
+        self._store_legacy_event(company_id, event_data, idempotency_key=idempotency_key, external_event_id=external_event_id)
+
         return aggregation_result
     
-    def _store_legacy_event(self, company_id: str, event_data: Dict[str, Any]):
-        """Store event in legacy tables for backward compatibility."""
+    def _store_legacy_event(self, company_id: str, event_data: Dict[str, Any], idempotency_key: Optional[str] = None, external_event_id: Optional[str] = None):
+        """Store event in legacy tables for backward compatibility.
+        Uses idempotency_key/external_event_id when provided to avoid duplicates.
+        """
+        from sqlalchemy.exc import IntegrityError
+
         try:
             # Determine if it's a Web3 event
             is_web3_event = (
@@ -69,6 +81,10 @@ class UnifiedAnalyticsService:
                 event_data.get("properties", {}).get("chain_id")
             )
             
+            # Resolve identifiers with fallbacks
+            resolved_idempotency_key = idempotency_key or event_data.get("idempotency_key") or event_data.get("event_id")
+            resolved_external_event_id = external_event_id or event_data.get("external_event_id") or event_data.get("event_id")
+
             if is_web3_event:
                 # Store as Web3Event
                 web3_event = Web3Event(
@@ -84,7 +100,9 @@ class UnifiedAnalyticsService:
                     country=event_data.get("country"),
                     region=event_data.get("region"),
                     city=event_data.get("city"),
-                    ip_address=event_data.get("ip_address")
+                    ip_address=event_data.get("ip_address"),
+                    idempotency_key=resolved_idempotency_key,
+                    external_event_id=resolved_external_event_id,
                 )
                 self.db.add(web3_event)
             else:
@@ -101,11 +119,16 @@ class UnifiedAnalyticsService:
                     country=event_data.get("country"),
                     region=event_data.get("region"),
                     city=event_data.get("city"),
-                    ip_address=event_data.get("ip_address")
+                    ip_address=event_data.get("ip_address"),
+                    idempotency_key=resolved_idempotency_key,
+                    external_event_id=resolved_external_event_id,
                 )
                 self.db.add(event)
             
             self.db.commit()
+        except IntegrityError:
+            # Duplicate based on unique (company_id, idempotency_key) - treat as idempotent no-op
+            self.db.rollback()
         except Exception as e:
             print(f"Error storing legacy event: {e}")
             self.db.rollback()
